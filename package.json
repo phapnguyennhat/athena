@@ -1,0 +1,12 @@
+{
+  "name": "athena",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "dev:api": "pnpm --filter api start:dev",
+    "dev:app": "pnpm --filter app start",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test"
+  }
+}

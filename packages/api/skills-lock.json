@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "skills": {
+    "nestjs-best-practices": {
+      "source": "Kadajett/agent-nestjs-skills",
+      "sourceType": "github",
+      "skillPath": "skills/nestjs-best-practices/SKILL.md",
+      "computedHash": "15dfabf74412bab8e6232cbe111b56048aac496d2f151a08995f305475d82fad"
+    }
+  }
+}
