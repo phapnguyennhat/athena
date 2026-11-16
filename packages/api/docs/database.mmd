@@ -1,0 +1,157 @@
+erDiagram
+    users ||--o{ learning_paths : owns
+    users ||--o| user_learning_stats : has
+    users ||--o{ daily_activities : logs
+    users ||--o{ lesson_progress : tracks
+    users ||--o{ quiz_attempts : submits
+    learning_paths ||--|{ learning_modules : contains
+    learning_modules ||--|{ lessons : contains
+    lessons ||--o{ lesson_resources : has
+    lessons ||--o| quizzes : has
+    lessons ||--o{ lesson_progress : "tracked by"
+    quizzes ||--|{ quiz_questions : contains
+    quizzes ||--o{ quiz_attempts : "attempted in"
+    quiz_attempts ||--|{ quiz_attempt_answers : contains
+    quiz_questions ||--o{ quiz_attempt_answers : "answered by"
+
+    users {
+        uuid id PK
+        varchar email UK
+        varchar password_hash "null if social login"
+        varchar full_name
+        varchar timezone "IANA, e.g. Asia/Ho_Chi_Minh"
+        varchar preferred_language "e.g. en, vi"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    learning_paths {
+        uuid id PK
+        uuid user_id FK "idx (user_id, updated_at)"
+        varchar title
+        varchar topic
+        text description
+        enum current_level "beginner | intermediate | advanced"
+        text learning_goal "nullable"
+        smallint study_hours_per_week "nullable"
+        varchar content_language
+        enum status "draft | active | completed | archived"
+        enum generation_status "pending | processing | completed | failed"
+        varchar generation_error "user-safe message, nullable"
+        varchar prompt_version
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    learning_modules {
+        uuid id PK
+        uuid learning_path_id FK "UK (learning_path_id, sort_order)"
+        varchar title
+        text description
+        int sort_order
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    lessons {
+        uuid id PK
+        uuid module_id FK "UK (module_id, sort_order)"
+        varchar title
+        text description
+        jsonb learning_objectives "string[]"
+        smallint estimated_minutes "nullable"
+        int sort_order
+        jsonb content "validated structured content, nullable"
+        enum content_generation_status "pending | processing | completed | failed"
+        varchar generation_error "nullable"
+        varchar prompt_version "nullable"
+        timestamptz content_generated_at "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    lesson_resources {
+        uuid id PK
+        uuid lesson_id FK "UK (lesson_id, provider, external_resource_id)"
+        enum resource_type "youtube_video | article"
+        varchar title
+        text url "verified, never LLM-generated"
+        varchar provider "youtube, ..."
+        varchar external_resource_id "e.g. YouTube video id"
+        varchar channel_name "nullable"
+        text thumbnail_url "nullable"
+        int duration_seconds "nullable"
+        text description "nullable"
+        int sort_order
+        timestamptz created_at
+    }
+
+    quizzes {
+        uuid id PK
+        uuid lesson_id FK,UK "one quiz per lesson"
+        varchar title
+        enum generation_status "pending | processing | completed | failed"
+        varchar generation_error "nullable"
+        varchar prompt_version "nullable"
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    quiz_questions {
+        uuid id PK
+        uuid quiz_id FK "UK (quiz_id, sort_order)"
+        enum question_type "single_choice"
+        text question
+        jsonb options "[{id, text}]"
+        varchar correct_option_id "server-side only"
+        text explanation
+        int sort_order
+        timestamptz created_at
+    }
+
+    quiz_attempts {
+        uuid id PK
+        uuid quiz_id FK
+        uuid user_id FK "idx (user_id, quiz_id, submitted_at)"
+        smallint total_questions
+        smallint correct_answers
+        numeric score "0-100"
+        timestamptz submitted_at
+        timestamptz created_at
+    }
+
+    quiz_attempt_answers {
+        uuid id PK
+        uuid quiz_attempt_id FK "UK (quiz_attempt_id, question_id)"
+        uuid question_id FK
+        varchar selected_option_id
+        boolean is_correct
+        timestamptz created_at
+    }
+
+    lesson_progress {
+        uuid id PK
+        uuid user_id FK "UK (user_id, lesson_id)"
+        uuid lesson_id FK
+        enum status "not_started | in_progress | completed"
+        timestamptz started_at "nullable"
+        timestamptz completed_at "nullable"
+        timestamptz updated_at
+    }
+
+    daily_activities {
+        uuid id PK
+        uuid user_id FK "UK (user_id, activity_date)"
+        date activity_date "local date in user's timezone"
+        int qualifying_activity_count
+        timestamptz created_at
+        timestamptz updated_at
+    }
+
+    user_learning_stats {
+        uuid user_id PK,FK
+        int current_streak
+        int longest_streak
+        date last_activity_date "nullable"
+        timestamptz updated_at
+    }
