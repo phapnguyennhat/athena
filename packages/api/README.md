@@ -1,132 +1,165 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Athena API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend for **Athena**, a personal AI learning companion. A user enters a topic, their level and a goal; the API generates a structured learning path (modules → lessons), then generates lesson content, finds learning resources, builds quizzes, grades attempts, and tracks progress and daily streaks.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+Built with [NestJS](https://nestjs.com) 12 (ESM) and part of the `athena` pnpm monorepo, next to the Expo mobile app in `packages/app`.
 
-## Description
+> **Status:** scaffold only. The app still contains just the default NestJS `AppController` / `AppService`. Everything below the "Setup" section describes the **planned** MVP from [`docs/PROJECT_SPEC.md`](../../docs/PROJECT_SPEC.md). Database, ORM, auth, AI provider and job queue have not been chosen yet. See spec §14 for the open decisions.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Setup
 
-## Project setup
+Requires Node 24+ and pnpm 11 (pinned in the root `package.json`).
 
 ```bash
-$ pnpm install
+# from the repo root
+pnpm install
+
+pnpm dev:api                 # watch mode (same as pnpm --filter api start:dev)
 ```
 
-## Compile and run the project
+From `packages/api`:
 
 ```bash
-# development
-$ pnpm run start
+pnpm start                   # run once
+pnpm start:dev               # watch mode
+pnpm start:debug             # watch + debugger
+pnpm build && pnpm start:prod
 
-# watch mode
-$ pnpm run start:dev
-
-# production mode
-$ pnpm run start:prod
+pnpm test                    # unit tests (vitest)
+pnpm test:e2e                # e2e tests
+pnpm test:cov                # coverage
+pnpm lint                    # oxlint (type-aware)
+pnpm format                  # prettier
 ```
 
-## Run tests
+### Configuration
+
+Environment variables are read from `.env` (never commit it).
+
+| Variable | Status  | Purpose                                    |
+| -------- | ------- | ------------------------------------------ |
+| `PORT`   | in use  | HTTP port, defaults to `3000`              |
+| AI provider key | planned | LLM calls; server-side only        |
+| YouTube Data API key | planned | Resource discovery; server-side only |
+| Database URL | planned | Persistence                           |
+
+AI and YouTube keys must never be shipped to the mobile client.
+
+## MVP scope
+
+The API supports one complete learning loop:
+
+**create a goal → AI learning path → study a generated lesson → open a resource → take a quiz → mark the lesson done → progress and streak update → come back and continue.**
+
+Out of scope for the MVP: admin course authoring, a public catalog, social features, leaderboards, payments, open-ended AI chat tutor, video hosting, complex badges, collaborative paths, offline sync (spec §2.2).
+
+## Planned endpoints
+
+These are proposals from spec §8. Every route needs authentication and checks that the user owns the resource.
+
+| Method | Route | Purpose |
+| ------ | ----- | ------- |
+| `POST` | `/learning-paths` | Create a path and request AI generation |
+| `GET` | `/learning-paths` | List the current user's paths |
+| `GET` | `/learning-paths/:pathId` | Path with modules and lessons |
+| `PATCH` | `/learning-paths/:pathId` | Update editable metadata |
+| `DELETE` | `/learning-paths/:pathId` | Archive or delete |
+| `GET` | `/lessons/:lessonId` | Lesson details and stored content |
+| `POST` | `/lessons/:lessonId/generate-content` | Generate content if missing |
+| `POST` | `/lessons/:lessonId/complete` | Mark completed (no quiz required) |
+| `GET` | `/lessons/:lessonId/resources` | External resources |
+| `POST` | `/lessons/:lessonId/quiz/generate` | Generate a quiz if none exists |
+| `GET` | `/lessons/:lessonId/quiz` | Quiz questions **without** answer keys |
+| `POST` | `/quizzes/:quizId/attempts` | Submit answers and get the graded result |
+| `GET` | `/quizzes/:quizId/attempts` | The user's past attempts |
+| `GET` | `/dashboard` | Summary, "continue learning" target, streak |
+| `GET` | `/activity` | Recent daily activity |
+| `GET` | `/streak` | Current/longest streak and today's status |
+
+## Planned database
+
+Designed for PostgreSQL (not chosen yet; `uuid`, `jsonb`, `timestamptz` and `enum` map easily to other SQL databases). Diagram source: [`docs/database.mmd`](docs/database.mmd).
+
+![Athena database diagram](docs/database.png)
+
+**Relationships**
+
+| Parent | Child | Type | On delete |
+| ------ | ----- | ---- | --------- |
+| `users` | `learning_paths` | 1 → N | cascade |
+| `users` | `user_learning_stats` | 1 → 0..1 | cascade |
+| `users` | `daily_activities`, `lesson_progress`, `quiz_attempts` | 1 → N | cascade |
+| `learning_paths` | `learning_modules` | 1 → N | cascade |
+| `learning_modules` | `lessons` | 1 → N | cascade |
+| `lessons` | `lesson_resources`, `lesson_progress` | 1 → N | cascade |
+| `lessons` | `quizzes` | 1 → 0..1 | cascade |
+| `quizzes` | `quiz_questions`, `quiz_attempts` | 1 → N | cascade |
+| `quiz_attempts` | `quiz_attempt_answers` | 1 → N | cascade |
+| `quiz_questions` | `quiz_attempt_answers` | 1 → N | cascade |
+
+**Constraints that enforce business rules**
+
+- `lesson_progress (user_id, lesson_id)` unique: one progress row per user and lesson.
+- `daily_activities (user_id, activity_date)` unique: a day counts once, so retries and concurrent requests can't bump the streak twice.
+- `quizzes.lesson_id` unique: one quiz per lesson, and concurrent generation requests can't create duplicates.
+- `quiz_attempt_answers (quiz_attempt_id, question_id)` unique: one answer per question per attempt.
+- `(parent_id, sort_order)` unique on modules, lessons and questions keeps ordering deterministic.
+- `quiz_questions.correct_option_id` is never sent to the client before the attempt is submitted.
+- Path progress is computed from `lesson_progress`, not stored. `user_learning_stats` is a cache that is updated in the same transaction as `daily_activities`.
+
+To regenerate the image after editing the `.mmd` file:
 
 ```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
+npx -y @mermaid-js/mermaid-cli -i docs/database.mmd -o docs/database.png -b white -s 2
 ```
 
-## Deployment
+## Rules the implementation must follow
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+**AI generation**
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+- Keep prompts, output schemas and provider calls behind a service/adapter, away from controllers. Version the prompts and schemas, and make the model configurable.
+- Use structured output / JSON Schema, then validate again on the backend. Never persist unvalidated model output.
+- Treat model output as untrusted. Never execute generated code or render unsanitized HTML.
+- Generate lesson content and quizzes on demand, store them, and reuse them. Protect against duplicate concurrent generation for the same target.
+- Track generation status (`pending → processing → completed | failed`) with a user-safe error message. Never overwrite valid content with an empty or invalid result.
+- Reject quiz output with missing or duplicate options, an invalid answer reference, or anything other than exactly one correct answer.
 
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
-```
+**Resources**
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+- YouTube links come from the YouTube Data API (or another verifiable source). The LLM may suggest search keywords, never URLs.
+- Validate URLs and video IDs. If nothing reliable is found, return no resource. Do not make one up.
 
-## Observability
+**Quizzes**
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+- Answer keys stay on the server until the attempt is submitted.
+- Grade with the stored answer key, not a new AI call. Retries create new attempts and keep the old ones.
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+**Progress and streaks**
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
+- A day qualifies when the user completes a lesson or submits a quiz attempt. Multiple actions on the same day count once.
+- Use the user's IANA timezone (e.g. `Asia/Ho_Chi_Minh`) for the activity date, never the server's UTC date. Store the local date when the event happens and don't rewrite history when the timezone changes.
+- A missed day resets the current streak on the next qualifying activity.
+- Run completion, quiz submission and streak updates in a transaction, and rely on the unique daily-activity record so retries and concurrent requests can't double-count.
 
-To add it to this project, run this and approve the code it prints at [observe.nestjs.com/link](https://observe.nestjs.com/link) - signing up for free if you have no account:
+**General**
 
-```bash
-$ npx @nestjs/observe link
-```
+- Validate every request body and path parameter, return consistent error formats, and make state-changing requests safe to retry.
+- Rate-limit AI endpoints and consider per-user quotas.
+- Log generation start, completion and failure with request IDs, latency and token usage. Never log keys, tokens or unnecessary user content.
+- Test the business rules, especially timezone and streak edge cases: midnight, timezone changes, missed days, concurrent and retried requests.
 
-It installs `@nestjs/observe`, wires it into `AppModule` and `main.ts`, and writes the app key and secret into `.env`, which every `nest start` script (`start`, `start:dev`, `start:debug`) then loads. In production, set `OBSERVE_APP_KEY` and `OBSERVE_APP_SECRET` in the environment instead.
+## Roadmap
 
-Or do it by hand:
+Spec §13:
 
-```bash
-$ pnpm install @nestjs/observe
-```
-
-Then follow the [setup guide](https://docs.nestjs.com/observability/sdk) - it takes a single import and an app key.
-
-The free plan needs no payment details and covers 300,000 events a month. You can also browse the [live demo](https://www.observe-demo.nestjs.com/dashboard) first - the whole dashboard over a busy service's data, with nothing to install.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observe](https://observe.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+0. Repository discovery and technical plan (`PLAN.md`, `ARCHITECTURE.md`, `DATA_MODEL.md`, `OPEN_QUESTIONS.md`)
+1. Foundation: auth, user profile, schema and migrations, path/module/lesson CRUD
+2. AI learning-path generation
+3. Lesson content and YouTube resources
+4. Quiz generation, attempts and grading
+5. Progress, dashboard and streak
+6. Hardening: security review, cost/rate limits, observability, tests
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+UNLICENSED, private project.
