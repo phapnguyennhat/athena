@@ -1,9 +1,62 @@
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/preflight.css' layer(base);
+@import 'tailwindcss/utilities.css';
+@import 'nativewind/theme';
+
+/* react-native-css reads this as the rem size (default 14); 16 keeps Tailwind's scale standard (px-6 = 24, text-base = 16). */
 :root {
-  --font-display:
-    Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
-    Segoe UI Symbol, Noto Color Emoji;
-  --font-mono:
-    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;
-  --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
-  --font-serif: Georgia, 'Times New Roman', serif;
+  font-size: 16px;
+}
+
+/* Athena world: near-black ground in dark, off-white in light; one red-orange accent for the primary action,
+   progress and state marks. Mirrored in src/constants/theme.ts for navigation/JS consumers: change both together. */
+@layer theme {
+  @theme {
+    --color-canvas: #f7f7f5;
+    --color-surface: #ffffff;
+    --color-well: #f0f0ed;
+    --color-line: #e2e2de;
+    --color-ink: #0e0e10;
+    --color-ink-muted: #5e5e66;
+    --color-mark-off: #b8b8be;
+    --color-tint: #ff4d3d;
+    --color-on-tint: #0e0e10;
+    --color-tint-ink: #c8321f;
+
+    --font-display:
+      Spline Sans, Inter, ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
+      Segoe UI Symbol, Noto Color Emoji;
+    --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #0e0e10;
+    --color-surface: #18181c;
+    --color-well: #0e0e10;
+    --color-line: #2a2a30;
+    --color-ink: #ffffff;
+    --color-ink-muted: #a6a6ae;
+    --color-mark-off: #55555e;
+    --color-tint-ink: #ff6a5c;
+  }
+}
+
+@media android {
+  :root {
+    --font-mono: monospace;
+    --font-rounded: normal;
+    --font-serif: serif;
+    --font-sans: normal;
+  }
+}
+
+@media ios {
+  :root {
+    --font-mono: ui-monospace;
+    --font-serif: ui-serif;
+    --font-sans: system-ui;
+    --font-rounded: ui-rounded;
+  }
 }

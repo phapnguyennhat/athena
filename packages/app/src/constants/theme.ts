@@ -3,24 +3,28 @@
  * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://unistyl.es/), etc.
  */
 
-import '@/global.css';
-
 import { Platform } from 'react-native';
 
+// Athena palette for JS consumers (navigation theme, native tabs, icon tints). Screens style with Tailwind
+// classes; the source of truth is src/global.css: change both together.
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#0E0E10',
+    background: '#F7F7F5',
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#F0F0ED',
+    textSecondary: '#5E5E66',
+    tint: '#FF4D3D',
+    tintText: '#C8321F',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#FFFFFF',
+    background: '#0E0E10',
+    backgroundElement: '#18181C',
+    backgroundSelected: '#2A2A30',
+    textSecondary: '#A6A6AE',
+    tint: '#FF4D3D',
+    tintText: '#FF6A5C',
   },
 } as const;
 

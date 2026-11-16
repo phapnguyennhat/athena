@@ -1,2 +1,6 @@
 packages:
   - packages/*
+
+# react-native-css (NativeWind v5) breaks on lightningcss >1.30.1; drop when it supports newer versions.
+overrides:
+  lightningcss: 1.30.1
