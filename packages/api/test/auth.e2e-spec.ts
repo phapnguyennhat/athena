@@ -82,12 +82,15 @@ describe('Auth (e2e)', () => {
     expect(res.body).toMatchObject({ code: 'email_unverified' });
   });
 
-  it('rejects a wrong code, then verifies with the emailed one and signs in', async () => {
+  it('rejects a wrong code, verifies with the emailed one without issuing tokens, then signs in', async () => {
     const code = codeOf(await latestMail(email));
     const wrong = code === '000000' ? '111111' : '000000';
     await http.post('/auth/verify-email').send({ email, code: wrong }).expect(400);
 
-    const res = await http.post('/auth/verify-email').send({ email, code }).expect(200);
+    const verified = await http.post('/auth/verify-email').send({ email, code }).expect(204);
+    expect(verified.body).toEqual({});
+
+    const res = await signIn().expect(200);
     expect(res.body).toEqual({ accessToken: expect.any(String), refreshToken: expect.any(String), expiresIn: 900 });
     expect(JSON.parse(Buffer.from(res.body.accessToken.split('.')[0], 'base64url').toString())).toMatchObject({
       alg: 'HS256',

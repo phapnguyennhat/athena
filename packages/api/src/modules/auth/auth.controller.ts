@@ -28,7 +28,7 @@ const TOO_MANY_REQUESTS = { description: 'More than 10 requests a minute from th
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
-  /** Create an account and email a 6-digit verification code. Sign in with `POST /auth/verify-email`. */
+  /** Create an account and email a 6-digit verification code, to send to `POST /auth/verify-email`. */
   @Public()
   @Post('sign-up')
   @HttpCode(HttpStatus.ACCEPTED)
@@ -40,15 +40,16 @@ export class AuthController {
     return this.auth.signUp(dto);
   }
 
-  /** Verify the email with the emailed code, and sign in. */
+  /** Verify the email with the emailed code. Then sign in with `POST /auth/sign-in`. */
   @Public()
   @Post('verify-email')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiNoContentResponse({ description: 'Email verified.' })
   @ApiTooManyRequestsResponse(TOO_MANY_REQUESTS)
   @ApiBadRequestResponse({
     description: 'Invalid body, or an invalid or expired code (a code allows 5 attempts and lasts 10 minutes).',
   })
-  verifyEmail(@Body() dto: VerifyEmailDto): Promise<TokenPairDto> {
+  verifyEmail(@Body() dto: VerifyEmailDto): Promise<void> {
     return this.auth.verifyEmail(dto);
   }
 

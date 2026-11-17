@@ -6,6 +6,9 @@ import Handlebars from 'handlebars';
 import { createTransport, type Transporter } from 'nodemailer';
 import type { EnvironmentVariables } from '../config/env.validation.js';
 
+// Copy of packages/app/assets/brand/athena-owl-light@3x.png (84px, shown at 44px for sharp retina rendering).
+const LOGO_PATH = join(import.meta.dirname, 'assets', 'athena-owl.png');
+
 /** Each template in ./templates (`<name>.hbs`) and the values it renders. */
 export interface MailTemplates {
   'verify-email': { fullName: string; code: string; expiresInMinutes: number };
@@ -53,7 +56,15 @@ export class MailService implements OnApplicationShutdown {
   async send<T extends keyof MailTemplates>({ to, subject, template, context, text }: MailMessage<T>): Promise<void> {
     const render = this.templates.get(template);
     if (!render) throw new Error(`Mail template "${template}" not found`);
-    const info = await this.transporter.sendMail({ from: this.from, to, subject, html: render(context), text });
+    const info = await this.transporter.sendMail({
+      from: this.from,
+      to,
+      subject,
+      html: render(context),
+      text,
+      // Inline logo, shown by templates as <img src="cid:athena-logo">: no public image hosting needed.
+      attachments: [{ filename: 'athena-owl.png', path: LOGO_PATH, cid: 'athena-logo' }],
+    });
     this.logger.log(`Sent "${template}" mail ${info.messageId}`);
   }
 

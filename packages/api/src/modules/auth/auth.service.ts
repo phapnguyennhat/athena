@@ -53,15 +53,14 @@ export class AuthService {
     return this.tokens.issue(user.id, PASSWORD_SIGN_IN);
   }
 
-  /** Verifies the emailed code and signs the user in. */
-  async verifyEmail({ email, code }: VerifyEmailDto): Promise<TokenPair> {
+  /** Verifies the emailed code. The user then signs in with their password. */
+  async verifyEmail({ email, code }: VerifyEmailDto): Promise<void> {
     const user = await this.users.findByEmail(email);
     // One answer for unknown emails, verified accounts and wrong codes.
     const valid = user !== null && !user.emailVerifiedAt && (await this.emailVerification.verifyCode(user.id, code));
     if (!valid || !(await this.users.markEmailVerified(user.id))) {
       throw new BadRequestException('Invalid or expired code');
     }
-    return this.tokens.issue(user.id, { method: 'email-otp' });
   }
 
   /** Sends a new code to an unverified account. Answers the same whether or not one was sent. */

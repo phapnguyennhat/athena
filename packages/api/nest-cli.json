@@ -16,6 +16,10 @@
       {
         "include": "mail/templates/**/*.hbs",
         "watchAssets": true
+      },
+      {
+        "include": "mail/assets/**/*",
+        "watchAssets": true
       }
     ]
   }
