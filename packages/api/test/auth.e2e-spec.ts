@@ -21,12 +21,32 @@ function forge(header: Record<string, unknown>, claims: Record<string, unknown>,
   return `${input}.${signature}`;
 }
 
+// Mailpit's API (docker-compose.yml): the newest message sent to `to`.
+interface MailpitMessage {
+  Subject: string;
+  HTML: string;
+  Text: string;
+  From: { Address: string };
+}
+async function latestMail(to: string): Promise<MailpitMessage> {
+  const api = `http://localhost:${process.env.MAILPIT_UI_PORT ?? 8025}/api/v1`;
+  for (let i = 0; i < 50; i++) {
+    const { messages } = (await (await fetch(`${api}/search?query=${encodeURIComponent(`to:"${to}"`)}`)).json()) as {
+      messages: { ID: string }[];
+    };
+    if (messages.length > 0) return (await (await fetch(`${api}/message/${messages[0].ID}`)).json()) as MailpitMessage;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`No mail to ${to}`);
+}
+const codeOf = (mail: MailpitMessage) => /^(\d{6}) /.exec(mail.Subject)![1];
+
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
   let http: ReturnType<typeof request>;
   const email = `user-${randomUUID()}@example.com`;
   const password = 'correct horse battery';
-  const profile = { fullName: 'Nguyen Van A', timezone: 'Asia/Ho_Chi_Minh' };
+  const profile = { fullName: 'Nguyễn Văn A', timezone: 'Asia/Ho_Chi_Minh' };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -42,21 +62,66 @@ describe('Auth (e2e)', () => {
 
   const signIn = () => http.post('/auth/sign-in').send({ email, password });
   const me = (token: string) => http.get('/auth/me').set('Authorization', `Bearer ${token}`);
+  const signUp = (body: Record<string, unknown>) =>
+    http.post('/auth/sign-up').send({ password, dateOfBirth: '2000-01-01', ...profile, ...body });
 
-  it('signs up and returns a token pair', async () => {
-    const res = await http
-      .post('/auth/sign-up')
-      .send({ email: email.toUpperCase(), password, dateOfBirth: '2000-02-29', ...profile })
-      .expect(201);
+  it('signs up without tokens and emails a 6-digit code through Mailpit', async () => {
+    const res = await signUp({ email: email.toUpperCase(), dateOfBirth: '2000-02-29' }).expect(202);
+    expect(res.body).toEqual({});
+
+    const mail = await latestMail(email);
+    expect(mail.From.Address).toBe('no-reply@athena.local');
+    expect(mail.Subject).toMatch(/^\d{6} là mã xác minh Athena của bạn$/);
+    expect(mail.HTML).toContain('Xin chào Nguyễn Văn A,');
+    expect(mail.HTML).toContain(codeOf(mail));
+    expect(mail.Text).toContain(codeOf(mail));
+  });
+
+  it('refuses sign-in until the email is verified', async () => {
+    const res = await signIn().expect(403);
+    expect(res.body).toMatchObject({ code: 'email_unverified' });
+  });
+
+  it('rejects a wrong code, then verifies with the emailed one and signs in', async () => {
+    const code = codeOf(await latestMail(email));
+    const wrong = code === '000000' ? '111111' : '000000';
+    await http.post('/auth/verify-email').send({ email, code: wrong }).expect(400);
+
+    const res = await http.post('/auth/verify-email').send({ email, code }).expect(200);
     expect(res.body).toEqual({ accessToken: expect.any(String), refreshToken: expect.any(String), expiresIn: 900 });
     expect(JSON.parse(Buffer.from(res.body.accessToken.split('.')[0], 'base64url').toString())).toMatchObject({
       alg: 'HS256',
       typ: 'at+jwt',
     });
+    // Spent: the same code can't be used twice.
+    await http.post('/auth/verify-email').send({ email, code }).expect(400);
+  });
+
+  it('kills a code after 5 wrong attempts', async () => {
+    const other = `user-${randomUUID()}@example.com`;
+    await signUp({ email: other }).expect(202);
+    const code = codeOf(await latestMail(other));
+    const wrong = code === '000000' ? '111111' : '000000';
+    for (let i = 0; i < 5; i++) await http.post('/auth/verify-email').send({ email: other, code: wrong }).expect(400);
+    await http.post('/auth/verify-email').send({ email: other, code }).expect(400);
+  });
+
+  it('HTML-escapes user input in the email', async () => {
+    const other = `user-${randomUUID()}@example.com`;
+    await signUp({ email: other, fullName: '<img src=x onerror=alert(1)>' }).expect(202);
+    const mail = await latestMail(other);
+    expect(mail.HTML).not.toContain('<img src=x');
+    expect(mail.HTML).toContain('&lt;img src&#x3D;x onerror&#x3D;alert(1)&gt;');
+  });
+
+  it('answers resend-verification the same for unknown and verified emails', async () => {
+    await http.post('/auth/resend-verification').send({ email: 'nobody@example.com' }).expect(202);
+    await http.post('/auth/resend-verification').send({ email }).expect(202);
+    await http.post('/auth/verify-email').send({ email: 'nobody@example.com', code: '123456' }).expect(400);
   });
 
   it('rejects a second sign-up with the same email', () =>
-    http.post('/auth/sign-up').send({ email, password, dateOfBirth: '2000-01-01', ...profile }).expect(409));
+    signUp({ email }).expect(409));
 
   const valid = { email: 'a@example.com', password, dateOfBirth: '2000-01-01', ...profile };
   it.each([
@@ -69,7 +134,6 @@ describe('Auth (e2e)', () => {
     [{ ...valid, fullName: undefined }],
     [{ ...valid, timezone: 'Mars/Olympus_Mons' }],
     [{ ...valid, timezone: undefined }],
-    [{ ...valid, preferredLanguage: 'fr' }],
     [{ ...valid, isAdmin: true }],
   ])('rejects an invalid sign-up body %#', async (body) => {
     await http.post('/auth/sign-up').send(body).expect(400);
@@ -87,9 +151,9 @@ describe('Auth (e2e)', () => {
     expect(res.body).toMatchObject({
       email,
       dateOfBirth: '2000-02-29',
-      fullName: 'Nguyen Van A',
+      fullName: 'Nguyễn Văn A',
       timezone: 'Asia/Ho_Chi_Minh',
-      preferredLanguage: 'en',
+      emailVerifiedAt: expect.any(String),
     });
     expect(res.body).not.toHaveProperty('passwordHash');
     await http.get('/auth/me').expect(401);

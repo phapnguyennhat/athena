@@ -51,6 +51,9 @@ Environment variables are read from `.env` (never commit it).
 | `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | in use | PostgreSQL (TypeORM) |
 | `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | in use | Refresh tokens and revoked access tokens |
 | `JWT_SECRET` | in use | HS256 signing key, at least 32 bytes (`openssl rand -base64 48`) |
+| `NODE_ENV` | in use | `development` serves Swagger at `/docs`; `production` requires TLS for SMTP |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` | in use | Outgoing mail. Locally Mailpit (`localhost:1025`, no auth, inbox at http://localhost:8025). In production the provider's SMTP server: `SMTP_SECURE=true` for port 465, otherwise STARTTLS is required |
+| `MAIL_FROM` | in use | Sender, e.g. `Athena <no-reply@example.com>` |
 | AI provider key | planned | LLM calls; server-side only        |
 | YouTube Data API key | planned | Resource discovery; server-side only |
 

@@ -13,6 +13,21 @@ export class UsersService {
     return this.users.findOneBy({ id });
   }
 
+  findByEmail(email: string): Promise<User | null> {
+    return this.users.findOneBy({ email });
+  }
+
+  /** Sets `emailVerifiedAt` once; `false` if it was already set. */
+  async markEmailVerified(id: string): Promise<boolean> {
+    const { affected } = await this.users
+      .createQueryBuilder()
+      .update()
+      .set({ emailVerifiedAt: () => 'now()' })
+      .where('id = :id AND email_verified_at IS NULL', { id })
+      .execute();
+    return affected === 1;
+  }
+
   /** Includes `passwordHash`, for sign-in only. */
   findByEmailWithPassword(email: string): Promise<User | null> {
     return this.users
@@ -22,10 +37,7 @@ export class UsersService {
       .getOne();
   }
 
-  async create(
-    data: Pick<User, 'email' | 'passwordHash' | 'fullName' | 'dateOfBirth' | 'timezone'> &
-      Partial<Pick<User, 'preferredLanguage'>>,
-  ): Promise<User> {
+  async create(data: Pick<User, 'email' | 'passwordHash' | 'fullName' | 'dateOfBirth' | 'timezone'>): Promise<User> {
     try {
       const { passwordHash: _, ...user } = await this.users.save(this.users.create(data));
       return user as User;

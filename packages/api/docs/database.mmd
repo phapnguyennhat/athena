@@ -21,7 +21,6 @@ erDiagram
         date date_of_birth
         varchar full_name
         varchar timezone "IANA, e.g. Asia/Ho_Chi_Minh"
-        varchar preferred_language "e.g. en, vi"
         timestamptz created_at
         timestamptz updated_at
     }
@@ -35,7 +34,7 @@ erDiagram
         enum current_level "beginner | intermediate | advanced"
         text learning_goal "nullable"
         smallint study_hours_per_week "nullable"
-        varchar content_language
+        varchar content_language "language of the user's input when creating the path"
         enum status "draft | active | completed | archived"
         enum generation_status "pending | processing | completed | failed"
         varchar generation_error "user-safe message, nullable"

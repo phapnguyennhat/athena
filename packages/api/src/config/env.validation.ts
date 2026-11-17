@@ -1,5 +1,16 @@
-import { plainToInstance } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Max, Min, MinLength, validateSync } from 'class-validator';
+import { plainToInstance, Transform } from 'class-transformer';
+import {
+  IsBoolean,
+  IsIn,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+  MinLength,
+  validateSync,
+} from 'class-validator';
 
 export class EnvironmentVariables {
   @IsOptional()
@@ -41,6 +52,36 @@ export class EnvironmentVariables {
   @IsString()
   @MinLength(32)
   JWT_SECRET: string;
+
+  @IsOptional()
+  @IsIn(['development', 'production', 'test'])
+  NODE_ENV?: 'development' | 'production' | 'test';
+
+  // SMTP: Mailpit locally (localhost:1025, no auth); the provider's server in production.
+  @IsString()
+  @IsNotEmpty()
+  SMTP_HOST: string;
+
+  @IsInt()
+  SMTP_PORT: number;
+
+  /** `true` for implicit TLS (port 465). With `false`, production still requires STARTTLS. */
+  @Transform(({ obj }: { obj: Record<string, unknown> }) => obj.SMTP_SECURE === 'true' || obj.SMTP_SECURE === true)
+  @IsBoolean()
+  SMTP_SECURE: boolean = false;
+
+  @IsOptional()
+  @IsString()
+  SMTP_USER?: string;
+
+  @IsOptional()
+  @IsString()
+  SMTP_PASSWORD?: string;
+
+  /** Sender, e.g. `Athena <no-reply@example.com>`. */
+  @IsString()
+  @IsNotEmpty()
+  MAIL_FROM: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

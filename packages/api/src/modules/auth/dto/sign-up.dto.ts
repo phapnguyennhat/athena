@@ -1,17 +1,13 @@
 import { Transform } from 'class-transformer';
 import {
   IsEmail,
-  IsIn,
   IsISO8601,
-  IsOptional,
   IsString,
   IsTimeZone,
   Matches,
   MaxLength,
   MinLength,
 } from 'class-validator';
-
-export const SUPPORTED_LANGUAGES = ['en', 'vi'] as const;
 
 export const normalizeEmail = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
@@ -43,8 +39,4 @@ export class SignUpDto {
   @IsTimeZone()
   @MaxLength(64)
   timezone: string;
-
-  @IsOptional()
-  @IsIn(SUPPORTED_LANGUAGES)
-  preferredLanguage?: (typeof SUPPORTED_LANGUAGES)[number];
 }

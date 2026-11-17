@@ -16,6 +16,7 @@ import {
   REFRESH_FAMILY_TTL,
   REFRESH_TOKEN_TTL,
 } from './auth.constants.js';
+import { EmailVerificationService } from './email-verification.service.js';
 import { JwtAuth } from './jwt.auth.js';
 import { RedisRefreshTokenStore } from './redis-refresh-token.store.js';
 
@@ -42,6 +43,6 @@ import { RedisRefreshTokenStore } from './redis-refresh-token.store.js';
     ThrottlerModule.forRoot({ throttlers: [{ ttl: minutes(1), limit: 10 }] }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuth, RedisRefreshTokenStore, AccessTokenDenylist],
+  providers: [AuthService, JwtAuth, RedisRefreshTokenStore, AccessTokenDenylist, EmailVerificationService],
 })
 export class AuthModule {}
