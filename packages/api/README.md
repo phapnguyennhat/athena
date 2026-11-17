@@ -17,6 +17,15 @@ pnpm install
 pnpm dev:api                 # watch mode (same as pnpm --filter api start:dev)
 ```
 
+Local services (Postgres, Redis, Mailpit, LocalStack S3) and the schema, from `packages/api`:
+
+```bash
+docker compose up -d
+pnpm migration:run           # migration:revert, migration:generate src/database/migrations/<Name>
+```
+
+When `NODE_ENV=development`, API docs (Swagger UI) are served at `/docs` and the OpenAPI JSON at `/docs-json`, e.g. http://localhost:8080/docs. They are generated from the DTOs, class-validator rules and doc comments by the `@nestjs/swagger` CLI plugin (`nest-cli.json`), so they stay in sync with the code.
+
 From `packages/api`:
 
 ```bash
@@ -39,9 +48,11 @@ Environment variables are read from `.env` (never commit it).
 | Variable | Status  | Purpose                                    |
 | -------- | ------- | ------------------------------------------ |
 | `PORT`   | in use  | HTTP port, defaults to `3000`              |
+| `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | in use | PostgreSQL (TypeORM) |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | in use | Refresh tokens and revoked access tokens |
+| `JWT_SECRET` | in use | HS256 signing key, at least 32 bytes (`openssl rand -base64 48`) |
 | AI provider key | planned | LLM calls; server-side only        |
 | YouTube Data API key | planned | Resource discovery; server-side only |
-| Database URL | planned | Persistence                           |
 
 AI and YouTube keys must never be shipped to the mobile client.
 
