@@ -61,9 +61,12 @@ export const Pressable = (props: React.ComponentProps<typeof RNPressable> & { cl
 };
 Pressable.displayName = 'CSS(Pressable)';
 
-export const TextInput = (props: React.ComponentProps<typeof RNTextInput> & { className?: string }) => {
-  return useCssElement(RNTextInput, props, { className: 'style' });
-};
+export const TextInput = React.forwardRef<
+  React.ComponentRef<typeof RNTextInput>,
+  React.ComponentProps<typeof RNTextInput> & { className?: string }
+>(function TextInput(props, ref) {
+  return useCssElement(RNTextInput, { ...props, ref }, { className: 'style' });
+});
 TextInput.displayName = 'CSS(TextInput)';
 
 type AnimatedViewProps = React.ComponentProps<typeof Animated.View>;

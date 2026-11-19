@@ -1,19 +1,10 @@
 import { SymbolView } from 'expo-symbols';
 import type { ReactNode } from 'react';
 
+import { StateMark } from '@/components/state-mark';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Text, View } from '@/tw';
-
-/** Lesson state as a fixed-cell mark: filled = done, half = in progress, hollow = not started. Never colour alone. */
-function StateMark({ state }: { state: 'done' | 'progress' | 'todo' }) {
-  return (
-    <View className={`h-4 w-4 overflow-hidden rounded-full border-2 ${state === 'todo' ? 'border-mark-off' : 'border-tint'}`}>
-      {state === 'done' && <View className="flex-1 bg-tint" />}
-      {state === 'progress' && <View className="h-full w-1/2 bg-tint" />}
-    </View>
-  );
-}
 
 function DemoCard({ label, children }: { label: string; children: ReactNode }) {
   return (
