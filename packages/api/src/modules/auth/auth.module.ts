@@ -44,5 +44,6 @@ import { RedisRefreshTokenStore } from './redis-refresh-token.store.js';
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuth, RedisRefreshTokenStore, AccessTokenDenylist, EmailVerificationService],
+  exports: [JwtAuth],
 })
 export class AuthModule {}

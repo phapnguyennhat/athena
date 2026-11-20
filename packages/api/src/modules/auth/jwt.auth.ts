@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ExecutionContextHost } from '@nestjs/core/helpers/execution-context-host.js';
 import { AuthenticationRegistry, JwtBearerProvider, type JwtClaims } from '@nestjs/authentication';
 import type { EnvironmentVariables } from '../../config/env.validation.js';
 import { User } from '../users/user.entity.js';
@@ -32,6 +33,20 @@ export class JwtAuth extends JwtBearerProvider<User> {
       required: ['exp', 'iat', 'sub', 'jti'],
     });
     registry.registerProvider(this);
+  }
+
+  /**
+   * The socket.io handshake check: runs this provider's own `authenticate` (same verifier and `validate`) on a
+   * ws context carrying only `handshake.auth.token`. `null` on any failure: bad token, revoked, unknown user, Redis down.
+   */
+  async verifyAccessToken(token: string): Promise<User | null> {
+    const context = new ExecutionContextHost([{ handshake: { auth: { token } } }]);
+    context.setType('ws');
+    try {
+      return (await this.authenticate(context))?.user ?? null;
+    } catch {
+      return null;
+    }
   }
 
   protected async validate({ sub, jti }: JwtClaims): Promise<User | null> {
