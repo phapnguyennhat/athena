@@ -201,3 +201,41 @@ describe('AiJobsService.recoverStale', () => {
     expect(client.emit).toHaveBeenCalledWith('ai.job', { jobId: 'old-queued' });
   });
 });
+
+describe('AiJobsService.sweepQueued', () => {
+  afterEach(() => vi.useRealTimers());
+
+  it('re-publishes queued jobs older than 2 minutes and never looks at running jobs', async () => {
+    const { repo, client, svc } = setup();
+    repo.find.mockResolvedValue([{ ...queued(), id: 'lost-job' }]);
+    expect(await svc.sweepQueued()).toBe(1);
+    expect(repo.find).toHaveBeenCalledTimes(1);
+    const where = repo.find.mock.calls[0][0].where;
+    expect(where.status).toBe('queued');
+    expect(where.updatedAt.value.getTime()).toBeLessThanOrEqual(Date.now() - 2 * 60_000);
+    expect(client.emit).toHaveBeenCalledWith('ai.job', { jobId: 'lost-job' });
+    expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('runs every 60 s after bootstrap and stops on destroy', async () => {
+    vi.useFakeTimers();
+    const { repo, svc } = setup();
+    await svc.onApplicationBootstrap();
+    const sweep = vi.spyOn(svc, 'sweepQueued');
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sweep).toHaveBeenCalledTimes(1);
+    svc.onModuleDestroy();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(sweep).toHaveBeenCalledTimes(1);
+    expect(repo.find).toHaveBeenCalled();
+  });
+
+  it('a failing sweep is logged, not thrown', async () => {
+    vi.useFakeTimers();
+    const { repo, svc } = setup();
+    await svc.onApplicationBootstrap();
+    repo.find.mockRejectedValue(new Error('db down'));
+    await vi.advanceTimersByTimeAsync(60_000);
+    svc.onModuleDestroy();
+  });
+});

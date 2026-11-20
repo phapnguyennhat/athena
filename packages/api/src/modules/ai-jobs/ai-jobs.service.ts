@@ -1,4 +1,12 @@
-import { Inject, Injectable, Logger, NotFoundException, OnApplicationBootstrap, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ClientProxy } from '@nestjs/microservices';
 import { InjectRepository } from '@nestjs/typeorm';
 import { lastValueFrom, timeout } from 'rxjs';
@@ -16,11 +24,13 @@ const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = [0, 2000, 8000];
 const STALE_MS = 2 * 60_000;
 const PUBLISH_TIMEOUT_MS = 5000;
+const SWEEP_INTERVAL_MS = 60_000;
 const ACTIVE = In(['queued', 'running']);
 
 @Injectable()
-export class AiJobsService implements OnApplicationBootstrap {
+export class AiJobsService implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly log = new Logger(AiJobsService.name);
+  private sweepTimer?: NodeJS.Timeout;
 
   /** Status hook, set by the socket gateway. */
   onStatusChange: (job: AiJob) => void = () => {};
@@ -91,8 +101,16 @@ export class AiJobsService implements OnApplicationBootstrap {
     if (job && job.status !== 'succeeded' && job.status !== 'failed') await this.fail(job, errorCode);
   }
 
-  onApplicationBootstrap() {
-    return this.recoverStale();
+  async onApplicationBootstrap() {
+    await this.recoverStale();
+    this.sweepTimer = setInterval(() => {
+      this.sweepQueued().catch((e: unknown) => this.log.error(`queued sweep failed: ${String(e)}`));
+    }, SWEEP_INTERVAL_MS);
+    this.sweepTimer.unref();
+  }
+
+  onModuleDestroy() {
+    clearInterval(this.sweepTimer);
   }
 
   /**
@@ -101,11 +119,9 @@ export class AiJobsService implements OnApplicationBootstrap {
    * instances, track a worker id/heartbeat per job instead.
    */
   async recoverStale(): Promise<number> {
-    const [running, staleQueued] = await Promise.all([
-      this.jobs.find({ where: { status: 'running' } }),
-      this.jobs.find({ where: { status: 'queued', updatedAt: LessThan(new Date(Date.now() - STALE_MS)) } }),
-    ]);
-    const republish = [...staleQueued];
+    const republished = await this.sweepQueued();
+    const running = await this.jobs.find({ where: { status: 'running' } });
+    const requeued: AiJob[] = [];
     for (const job of running) {
       if (job.attempts >= MAX_ATTEMPTS) {
         await this.fail(job, 'AI_UNAVAILABLE');
@@ -113,13 +129,27 @@ export class AiJobsService implements OnApplicationBootstrap {
       }
       await this.jobs.update({ id: job.id, status: 'running' }, { status: 'queued' });
       job.status = 'queued';
-      republish.push(job);
+      requeued.push(job);
     }
-    // A duplicate of a still-queued message is harmless: process() claims atomically.
-    for (const job of republish)
+    await this.republish(requeued);
+    return republished + requeued.length;
+  }
+
+  /**
+   * Re-publishes `queued` jobs older than 2 minutes: their message was lost (or the broker restarted).
+   * Runs at boot and every minute; never touches `running` jobs, which may be in progress.
+   */
+  async sweepQueued(): Promise<number> {
+    const stale = await this.jobs.find({ where: { status: 'queued', updatedAt: LessThan(new Date(Date.now() - STALE_MS)) } });
+    await this.republish(stale);
+    return stale.length;
+  }
+
+  // A duplicate of a still-queued message is harmless: process() claims atomically.
+  private async republish(jobs: AiJob[]) {
+    for (const job of jobs)
       await this.publish(job).catch((e: unknown) => this.log.error(`re-publish of job ${job.id} failed: ${String(e)}`));
-    if (republish.length) this.log.log(`re-published ${republish.length} job(s)`);
-    return republish.length;
+    if (jobs.length) this.log.log(`re-published ${jobs.length} job(s)`);
   }
 
   private async publish(job: AiJob) {
