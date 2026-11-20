@@ -1,5 +1,13 @@
 import type { MigrationInterface, QueryRunner } from 'typeorm';
 
+const FK_INDEXES = [
+  ['IDX_learning_paths_user', 'learning_paths', 'user_id'],
+  ['IDX_learning_paths_conversation', 'learning_paths', 'conversation_id'],
+  ['IDX_path_modules_path', 'path_modules', 'path_id'],
+  ['IDX_path_lessons_module', 'path_lessons', 'module_id'],
+  ['IDX_ai_jobs_user', 'ai_jobs', 'user_id'],
+] as const;
+
 export class CreateLearningPaths1763400000000 implements MigrationInterface {
   name = 'CreateLearningPaths1763400000000';
 
@@ -66,9 +74,12 @@ export class CreateLearningPaths1763400000000 implements MigrationInterface {
       CONSTRAINT "PK_ai_jobs" PRIMARY KEY ("id"),
       CONSTRAINT "FK_ai_jobs_user" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE)`);
     await q.query(`CREATE UNIQUE INDEX "one_active_generate_job" ON "ai_jobs" ((input->>'conversationId')) WHERE type = 'generate_path' AND status IN ('queued','running')`);
+    // Postgres doesn't index FK columns itself; these back owner lookups and cascading deletes.
+    for (const [name, table, column] of FK_INDEXES) await q.query(`CREATE INDEX "${name}" ON "${table}" ("${column}")`);
   }
 
   async down(q: QueryRunner): Promise<void> {
+    for (const [name] of FK_INDEXES) await q.query(`DROP INDEX "${name}"`);
     await q.query(`DROP INDEX "one_active_generate_job"`);
     await q.query(`DROP TABLE "ai_jobs"`);
     await q.query(`DROP TABLE "path_lessons"`);
