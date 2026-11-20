@@ -1,0 +1,42 @@
+import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn, type Relation } from 'typeorm';
+import { User } from '../../users/user.entity.js';
+import { PathConversation } from './path-conversation.entity.js';
+import { PathModule } from './path-module.entity.js';
+
+@Entity('learning_paths')
+export class LearningPathEntity {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ name: 'user_id', type: 'uuid' })
+  userId: string;
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
+  user?: User;
+
+  @Column({ name: 'conversation_id', type: 'uuid', nullable: true })
+  conversationId: string | null;
+
+  @ManyToOne(() => PathConversation, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'conversation_id' })
+  conversation?: Relation<PathConversation> | null;
+
+  @Column({ type: 'varchar', length: 16, default: 'draft' })
+  status: 'draft' | 'active';
+
+  @Column({ type: 'varchar', length: 200 })
+  title: string;
+
+  @Column({ type: 'text' })
+  summary: string;
+
+  @OneToMany(() => PathModule, (m) => m.path)
+  modules: Relation<PathModule>[];
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt: Date;
+
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
+  updatedAt: Date;
+}

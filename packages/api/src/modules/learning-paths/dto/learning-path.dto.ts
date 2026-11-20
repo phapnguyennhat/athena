@@ -25,6 +25,9 @@ export class PreferencesDto {
   @IsOptional() @IsInt() @Min(5) @Max(240) dailyMinutes?: number;
 }
 
+/** Plain-type view of `PreferencesDto` for entities and services. */
+export type Preferences = PreferencesDto;
+
 export class ChatMessageDto {
   @IsIn(['user', 'assistant']) role: 'user' | 'assistant';
   @IsString() @IsNotEmpty() @MaxLength(1000) content: string;
