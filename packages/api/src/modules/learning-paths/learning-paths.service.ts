@@ -1,75 +1,63 @@
-import { randomUUID } from 'node:crypto';
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import type {
-  ChatReply,
-  LearningPath,
-  PreferencesDto,
-} from './dto/learning-path.dto.js';
-import type { ChatRequestDto } from './dto/learning-path.dto.js';
-import { serverReady } from './ai-output.js';
-import { PathAi } from './path-ai.js';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
+import type { LearningPath } from './dto/learning-path.dto.js';
+import { LearningPathEntity } from './entities/learning-path.entity.js';
+import { PathConversation } from './entities/path-conversation.entity.js';
+import { PathLesson } from './entities/path-lesson.entity.js';
+import { PathModule } from './entities/path-module.entity.js';
+
+/** The app's `LearningPath` shape. */
+export type LearningPathView = LearningPath;
+
+const notFound = () => new NotFoundException({ statusCode: 404, code: 'PATH_NOT_FOUND', message: 'Learning path not found.' });
+const byPosition = (a: { position: number }, b: { position: number }) => a.position - b.position;
+
+/** Inserts modules and their lessons for a path, positions following array order. */
+export async function insertModules(m: EntityManager, pathId: string, modules: LearningPath['modules']): Promise<void> {
+  const saved = await m.save(
+    PathModule,
+    modules.map((mod, i) => ({ pathId, position: i, title: mod.title })),
+  );
+  const lessons = saved.flatMap((s, i) => modules[i].lessons.map((l, j) => ({ moduleId: s.id, position: j, title: l.title })));
+  if (lessons.length) await m.insert(PathLesson, lessons);
+}
 
 @Injectable()
 export class LearningPathsService {
-  // shortcut: in-memory per instance, lost on restart; move to a TypeORM entity when persistence is built.
-  private readonly paths = new Map<string, LearningPath & { userId: string }>();
+  constructor(
+    private readonly ds: DataSource,
+    @InjectRepository(LearningPathEntity) private readonly paths: Repository<LearningPathEntity>,
+  ) {}
 
-  constructor(private readonly ai: PathAi) {}
-
-  async chat({ messages, preferences }: ChatRequestDto): Promise<ChatReply> {
-    const out = await this.ai.chat({
-      history: messages,
-      preferences: preferences ?? {},
-    });
+  async get(userId: string, id: string): Promise<LearningPathView> {
+    const path = await this.paths.findOne({ where: { id, userId }, relations: { modules: { lessons: true } } });
+    if (!path) throw notFound();
     return {
-      reply: out.reply,
-      quickReplies: out.quickReplies,
-      preferences: out.preferences,
-      ready: serverReady(out),
+      id: path.id,
+      status: path.status,
+      title: path.title,
+      summary: path.summary,
+      modules: [...path.modules].sort(byPosition).map((mod) => ({
+        title: mod.title,
+        lessons: [...mod.lessons].sort(byPosition).map((l) => ({ title: l.title })),
+      })),
     };
   }
 
-  async generate(
-    userId: string,
-    preferences: PreferencesDto,
-  ): Promise<LearningPath> {
-    if (!preferences.topic || !preferences.level)
-      throw new BadRequestException('topic and level are required');
-    const path = {
-      ...(await this.ai.generate(preferences)),
-      id: randomUUID(),
-      status: 'draft' as const,
-      userId,
-    };
-    this.paths.set(path.id, path);
-    return this.view(path);
-  }
-
-  start(
-    userId: string,
-    id: string,
-    modules?: LearningPath['modules'],
-  ): LearningPath {
-    const path = this.paths.get(id);
-    if (!path || path.userId !== userId) throw new NotFoundException();
-    // Review edits only apply to a draft; an active path keeps its structure.
-    if (modules && path.status === 'draft')
-      path.modules = modules.map((m) => ({
-        title: m.title,
-        lessons: m.lessons.map((l) => ({ title: l.title })),
-      }));
-    path.status = 'active';
-    return this.view(path);
-  }
-
-  private view({
-    userId: _userId,
-    ...path
-  }: LearningPath & { userId: string }): LearningPath {
-    return path;
+  /** Accepts the reviewed draft: applies edits (draft only), activates it and closes its conversation. */
+  async start(userId: string, id: string, modules?: LearningPath['modules']): Promise<LearningPathView> {
+    await this.ds.transaction(async (m) => {
+      const path = await m.findOne(LearningPathEntity, { where: { id, userId }, lock: { mode: 'pessimistic_write' } });
+      if (!path) throw notFound();
+      // Review edits only apply to a draft; an active path keeps its structure.
+      if (modules && path.status === 'draft') {
+        await m.delete(PathModule, { pathId: id });
+        await insertModules(m, id, modules);
+      }
+      await m.update(LearningPathEntity, id, { status: 'active' });
+      if (path.conversationId) await m.update(PathConversation, path.conversationId, { status: 'closed' });
+    });
+    return this.get(userId, id);
   }
 }

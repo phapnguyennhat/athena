@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Redis } from 'ioredis';
-import { DataSource, In, Repository } from 'typeorm';
+import { DataSource, In, JsonContains, Repository } from 'typeorm';
 import { REDIS } from '../../redis/redis.module.js';
 import { AiJob } from '../ai-jobs/ai-job.entity.js';
 import { AiError, serverReady, validateChatOutput } from './ai-output.js';
@@ -147,7 +147,10 @@ export class ConversationsService {
   private async view(conv: PathConversation): Promise<ConversationView> {
     const [messages, job, draft] = await Promise.all([
       this.msgs.find({ where: { conversationId: conv.id }, order: { createdAt: 'ASC', role: 'DESC' } }),
-      this.jobs.findOne({ where: { userId: conv.userId, status: In(['queued', 'running']) }, order: { createdAt: 'DESC' } }),
+      this.jobs.findOne({
+        where: { type: 'generate_path', status: In(['queued', 'running']), input: JsonContains({ conversationId: conv.id }) },
+        order: { createdAt: 'DESC' },
+      }),
       this.paths.findOneBy({ conversationId: conv.id, status: 'draft' }),
     ]);
     return {

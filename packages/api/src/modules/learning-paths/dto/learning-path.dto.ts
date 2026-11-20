@@ -29,30 +29,6 @@ export class PreferencesDto {
 /** Plain-type view of `PreferencesDto` for entities and services. */
 export type Preferences = PreferencesDto;
 
-export class ChatMessageDto {
-  @IsIn(['user', 'assistant']) role: 'user' | 'assistant';
-  @IsString() @IsNotEmpty() @MaxLength(1000) content: string;
-}
-
-export class ChatRequestDto {
-  @IsArray()
-  @ArrayMaxSize(40)
-  @ValidateNested({ each: true })
-  @Type(() => ChatMessageDto)
-  messages: ChatMessageDto[];
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => PreferencesDto)
-  preferences?: PreferencesDto;
-}
-
-export class GenerateRequestDto {
-  @ValidateNested()
-  @Type(() => PreferencesDto)
-  preferences: PreferencesDto;
-}
-
 export class LessonDto {
   @IsString() @IsNotEmpty() @MaxLength(200) title: string;
 }
@@ -78,14 +54,6 @@ export class StartRequestDto {
   @Type(() => ModuleDto)
   modules?: ModuleDto[];
 }
-
-export type ChatReply = {
-  reply: string;
-  quickReplies: string[];
-  preferences: PreferencesDto;
-  /** True once the chatbot has everything it needs (required fields plus an answered or skipped goal): the client shows "generate". */
-  ready: boolean;
-};
 
 export type LearningPath = {
   id: string;

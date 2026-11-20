@@ -1,8 +1,9 @@
 import { GoogleGenAI } from '@google/genai';
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiJob } from '../ai-jobs/ai-job.entity.js';
+import { AiJobsModule } from '../ai-jobs/ai-jobs.module.js';
 import { ConversationsController } from './conversations.controller.js';
 import { ConversationsService } from './conversations.service.js';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
@@ -10,6 +11,7 @@ import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathLesson } from './entities/path-lesson.entity.js';
 import { PathMessage } from './entities/path-message.entity.js';
 import { PathModule } from './entities/path-module.entity.js';
+import { GeneratePathHandler } from './generate-path.handler.js';
 import { LearningPathsController } from './learning-paths.controller.js';
 import { LearningPathsService } from './learning-paths.service.js';
 import { GeminiPathAi } from './gemini-path-ai.js';
@@ -17,11 +19,15 @@ import { PathAi } from './path-ai.js';
 import { StubPathAi } from './stub-path-ai.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PathConversation, PathMessage, LearningPathEntity, PathModule, PathLesson, AiJob])],
+  imports: [
+    TypeOrmModule.forFeature([PathConversation, PathMessage, LearningPathEntity, PathModule, PathLesson, AiJob]),
+    forwardRef(() => AiJobsModule),
+  ],
   controllers: [LearningPathsController, ConversationsController],
   providers: [
     LearningPathsService,
     ConversationsService,
+    GeneratePathHandler,
     {
       provide: PathAi,
       inject: [ConfigService],
@@ -31,5 +37,6 @@ import { StubPathAi } from './stub-path-ai.js';
           : new StubPathAi(),
     },
   ],
+  exports: [GeneratePathHandler],
 })
 export class LearningPathsModule {}
