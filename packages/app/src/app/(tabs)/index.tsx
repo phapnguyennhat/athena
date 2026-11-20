@@ -1,98 +1,40 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { BrandMark } from '@/components/brand-mark';
+import {
+  CommunityRail,
+  ContinueSection,
+  StreakCard,
+  type CommunityCourse,
+} from '@/components/home-sections';
+import { ACTIVE } from '@/lib/sample-courses';
+import { ThemeToggle } from '@/components/theme-toggle';
+import { SafeAreaView, ScrollView, Text, View } from '@/tw';
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+// shortcut: static sample data, replace with API (progress, streak, community feed) once those endpoints exist.
+const STREAK = { days: 5, week: [true, true, true, true, true, false, false], today: 4 };
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
-  return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+const COMMUNITY: CommunityCourse[] = [
+  { id: 'c1', title: 'Ngữ pháp tiếng Anh: thì hiện tại', author: 'minh.anh', level: 'Cơ bản', lessons: 8, cover: 'EN' },
+  { id: 'c2', title: 'Học máy qua ví dụ', author: 'tuan.ml', level: 'Trung cấp', lessons: 14, cover: 'ML' },
+  { id: 'c3', title: 'Quản lý tài chính cá nhân', author: 'lan.pham', level: 'Cơ bản', lessons: 6, cover: 'TC' },
+];
 
 export default function HomeScreen() {
   return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
-
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
-
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+    <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
+      <ScrollView contentContainerClassName="gap-7 pb-32" showsVerticalScrollIndicator={false}>
+        <View className="mr-2 ml-5 flex-row items-center justify-between">
+          <BrandMark />
+          <ThemeToggle />
+        </View>
+        <View className="mr-5 ml-5 gap-7">
+          <Text accessibilityRole="header" className="text-[30px] leading-9 font-black tracking-[-0.5px] text-ink">
+            Chào bạn, học tiếp nào.
+          </Text>
+          <StreakCard {...STREAK} />
+          <ContinueSection courses={ACTIVE} />
+        </View>
+        <CommunityRail courses={COMMUNITY} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
-  },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
-  },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  title: {
-    textAlign: 'center',
-  },
-  code: {
-    textTransform: 'uppercase',
-  },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
-  },
-});

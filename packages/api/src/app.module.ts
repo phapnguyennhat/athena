@@ -6,6 +6,7 @@ import { AppService } from './app.service.js';
 import { validateEnv } from './config/env.validation.js';
 import { DatabaseModule } from './database/database.module.js';
 import { MailModule } from './mail/mail.module.js';
+import { LearningPathsModule } from './modules/learning-paths/learning-paths.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { RedisModule } from './redis/redis.module.js';
@@ -18,6 +19,7 @@ import { RedisModule } from './redis/redis.module.js';
     MailModule,
     UsersModule,
     AuthModule,
+    LearningPathsModule,
   ],
   controllers: [AppController],
   providers: [
