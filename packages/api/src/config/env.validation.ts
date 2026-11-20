@@ -9,6 +9,7 @@ import {
   Max,
   Min,
   MinLength,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -82,6 +83,23 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   MAIL_FROM: string;
+
+  /** `stub` needs no key (local/dev/tests); `gemini` calls the real API. */
+  @IsIn(['gemini', 'stub'])
+  AI_PROVIDER: 'gemini' | 'stub' = 'stub';
+
+  @ValidateIf((o: EnvironmentVariables) => o.AI_PROVIDER === 'gemini')
+  @IsString()
+  @IsNotEmpty()
+  GEMINI_API_KEY?: string;
+
+  @IsString()
+  @IsNotEmpty()
+  GEMINI_MODEL: string = 'gemini-2.5-flash';
+
+  @IsString()
+  @IsNotEmpty()
+  RABBITMQ_URL: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {
