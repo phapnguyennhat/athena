@@ -17,7 +17,7 @@ pnpm install
 pnpm dev:api                 # watch mode (same as pnpm --filter api start:dev)
 ```
 
-Local services (Postgres, Redis, Mailpit, LocalStack S3) and the schema, from `packages/api`:
+Local services (Postgres, Redis, Mailpit, RabbitMQ, LocalStack S3) and the schema, from `packages/api`. The API and the e2e suite (`pnpm test:e2e`) both need RabbitMQ running, so start the stack first:
 
 ```bash
 docker compose up -d
@@ -54,7 +54,12 @@ Environment variables are read from `.env` (never commit it).
 | `NODE_ENV` | in use | `development` serves Swagger at `/docs`; `production` requires TLS for SMTP |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD` | in use | Outgoing mail. Locally Mailpit (`localhost:1025`, no auth, inbox at http://localhost:8025). In production the provider's SMTP server: `SMTP_SECURE=true` for port 465, otherwise STARTTLS is required |
 | `MAIL_FROM` | in use | Sender, e.g. `Athena <no-reply@example.com>` |
-| AI provider key | planned | LLM calls; server-side only        |
+| `RABBITMQ_URL` | required | AMQP URL of the AI job queue. Locally `amqp://<RABBITMQ_USER>:<RABBITMQ_PASSWORD>@localhost:5672` |
+| `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | required by `docker compose` | Credentials the local RabbitMQ container is created with; must match `RABBITMQ_URL` |
+| `RABBITMQ_PORT`, `RABBITMQ_UI_PORT` | optional | Host ports of the local RabbitMQ container, default `5672` and `15672` (management UI at http://localhost:15672) |
+| `AI_PROVIDER` | optional, **required in production** | `gemini` calls Google Gemini; `stub` returns canned answers with no key. Defaults to `stub` outside production |
+| `GEMINI_API_KEY` | required when `AI_PROVIDER=gemini` | Gemini API key; server-side only |
+| `GEMINI_MODEL` | optional | Gemini model, default `gemini-2.5-flash` |
 | YouTube Data API key | planned | Resource discovery; server-side only |
 
 AI and YouTube keys must never be shipped to the mobile client.
@@ -67,28 +72,21 @@ The API supports one complete learning loop:
 
 Out of scope for the MVP: admin course authoring, a public catalog, social features, leaderboards, payments, open-ended AI chat tutor, video hosting, complex badges, collaborative paths, offline sync (spec §2.2).
 
-## Planned endpoints
+## Endpoints
 
-These are proposals from spec §8. Every route needs authentication and checks that the user owns the resource.
+Every route needs a bearer access token and only touches the current user's resources. Swagger (`/docs`) has the full request and response shapes.
 
 | Method | Route | Purpose |
 | ------ | ----- | ------- |
-| `POST` | `/learning-paths` | Create a path and request AI generation |
-| `GET` | `/learning-paths` | List the current user's paths |
-| `GET` | `/learning-paths/:pathId` | Path with modules and lessons |
-| `PATCH` | `/learning-paths/:pathId` | Update editable metadata |
-| `DELETE` | `/learning-paths/:pathId` | Archive or delete |
-| `GET` | `/lessons/:lessonId` | Lesson details and stored content |
-| `POST` | `/lessons/:lessonId/generate-content` | Generate content if missing |
-| `POST` | `/lessons/:lessonId/complete` | Mark completed (no quiz required) |
-| `GET` | `/lessons/:lessonId/resources` | External resources |
-| `POST` | `/lessons/:lessonId/quiz/generate` | Generate a quiz if none exists |
-| `GET` | `/lessons/:lessonId/quiz` | Quiz questions **without** answer keys |
-| `POST` | `/quizzes/:quizId/attempts` | Submit answers and get the graded result |
-| `GET` | `/quizzes/:quizId/attempts` | The user's past attempts |
-| `GET` | `/dashboard` | Summary, "continue learning" target, streak |
-| `GET` | `/activity` | Recent daily activity |
-| `GET` | `/streak` | Current/longest streak and today's status |
+| `GET` | `/learning-paths/conversations/current` | The open path-planning conversation with its messages (404 `CONVERSATION_NOT_FOUND` if none) |
+| `POST` | `/learning-paths/conversations` | Start over: close the open conversation and open a new one with the greeting |
+| `POST` | `/learning-paths/conversations/:id/messages` | One chat turn with the AI (20 a minute) |
+| `POST` | `/learning-paths/conversations/:id/generate` | Queue path generation (202, returns the job; idempotent while a job is active; 5 an hour) |
+| `GET` | `/jobs/:id` | Status of an AI job; `resultId` is the draft path once it succeeded |
+| `GET` | `/learning-paths/:id` | A path with its modules and lessons |
+| `POST` | `/learning-paths/:id/start` | Accept the (optionally edited) draft: it becomes active and the conversation closes |
+
+**Live job status:** a socket.io namespace at `/events` (websocket transport only). Pass the access token as `auth: { token }` in the handshake; an invalid token gets `auth_error` and is disconnected. The server emits `job.updated` with `{ jobId, type, status, resultId, errorCode }` whenever one of the user's jobs changes, so the app need not poll `/jobs/:id`.
 
 ## Planned database
 
