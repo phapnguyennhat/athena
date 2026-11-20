@@ -79,7 +79,7 @@ export class AiJobsService implements OnApplicationBootstrap {
         if (!retry) return this.fail(job, e.code);
         if (e.code === 'AI_INVALID_OUTPUT') invalidRetried = true;
         this.log.warn(`job ${job.id} attempt ${job.attempts} failed: ${e.code}; retrying`);
-        await new Promise((r) => setTimeout(r, BACKOFF_MS[job.attempts]));
+        await new Promise((r) => setTimeout(r, BACKOFF_MS[Math.min(job.attempts, BACKOFF_MS.length - 1)]));
         job.attempts++;
         await this.jobs.update(job.id, { attempts: job.attempts });
       }
@@ -95,17 +95,31 @@ export class AiJobsService implements OnApplicationBootstrap {
     return this.recoverStale();
   }
 
-  /** Re-publishes jobs left queued/running for over 2 minutes (e.g. the process died mid-job). */
+  /**
+   * Boot-time recovery. Every `running` job is orphaned: a redelivered message would be skipped by process().
+   * shortcut: assumes a single worker instance (at boot nothing else can be running a job); with several
+   * instances, track a worker id/heartbeat per job instead.
+   */
   async recoverStale(): Promise<number> {
-    const stale = await this.jobs.find({ where: { status: ACTIVE, updatedAt: LessThan(new Date(Date.now() - STALE_MS)) } });
-    for (const job of stale) {
-      // process() only picks up queued jobs.
-      if (job.status === 'running') await this.jobs.update({ id: job.id, status: 'running' }, { status: 'queued' });
+    const [running, staleQueued] = await Promise.all([
+      this.jobs.find({ where: { status: 'running' } }),
+      this.jobs.find({ where: { status: 'queued', updatedAt: LessThan(new Date(Date.now() - STALE_MS)) } }),
+    ]);
+    const republish = [...staleQueued];
+    for (const job of running) {
+      if (job.attempts >= MAX_ATTEMPTS) {
+        await this.fail(job, 'AI_UNAVAILABLE');
+        continue;
+      }
+      await this.jobs.update({ id: job.id, status: 'running' }, { status: 'queued' });
       job.status = 'queued';
-      await this.publish(job).catch((e: unknown) => this.log.error(`re-publish of job ${job.id} failed: ${String(e)}`));
+      republish.push(job);
     }
-    if (stale.length) this.log.log(`re-published ${stale.length} stale job(s)`);
-    return stale.length;
+    // A duplicate of a still-queued message is harmless: process() claims atomically.
+    for (const job of republish)
+      await this.publish(job).catch((e: unknown) => this.log.error(`re-publish of job ${job.id} failed: ${String(e)}`));
+    if (republish.length) this.log.log(`re-published ${republish.length} job(s)`);
+    return republish.length;
   }
 
   private async publish(job: AiJob) {

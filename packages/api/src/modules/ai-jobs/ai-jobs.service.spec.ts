@@ -170,3 +170,34 @@ describe('AiJobsService.enqueue', () => {
     expect(repo.update).toHaveBeenCalledWith('new-job', { status: 'failed', errorCode: 'QUEUE_UNAVAILABLE' });
   });
 });
+
+describe('AiJobsService.recoverStale', () => {
+  // find() is called per status; answer by the status in the where clause.
+  const byStatus = (rows: Record<string, object[]>) => (opts: { where: { status: string } }) =>
+    Promise.resolve(rows[opts.where.status] ?? []);
+
+  it('resets a running job updated 10 s ago to queued and re-publishes it at boot', async () => {
+    const { repo, client, svc } = setup();
+    const running = { ...queued(), id: 'run-job', status: 'running', attempts: 1, updatedAt: new Date(Date.now() - 10_000) };
+    repo.find.mockImplementation(byStatus({ running: [running] }));
+    expect(await svc.recoverStale()).toBe(1);
+    expect(repo.update).toHaveBeenCalledWith({ id: 'run-job', status: 'running' }, { status: 'queued' });
+    expect(client.emit).toHaveBeenCalledWith('ai.job', { jobId: 'run-job' });
+  });
+
+  it('fails a running job that already used all attempts with AI_UNAVAILABLE instead of re-queuing it', async () => {
+    const { repo, client, svc } = setup();
+    const spent = { ...queued(), id: 'spent-job', status: 'running', attempts: 3, updatedAt: new Date() };
+    repo.find.mockImplementation(byStatus({ running: [spent] }));
+    await svc.recoverStale();
+    expect(repo.update).toHaveBeenCalledWith('spent-job', { status: 'failed', errorCode: 'AI_UNAVAILABLE' });
+    expect(client.emit).not.toHaveBeenCalled();
+  });
+
+  it('re-publishes queued jobs older than 2 minutes', async () => {
+    const { repo, client, svc } = setup();
+    repo.find.mockImplementation(byStatus({ queued: [{ ...queued(), id: 'old-queued' }] }));
+    expect(await svc.recoverStale()).toBe(1);
+    expect(client.emit).toHaveBeenCalledWith('ai.job', { jobId: 'old-queued' });
+  });
+});
