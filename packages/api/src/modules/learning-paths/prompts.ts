@@ -26,7 +26,7 @@ export const CHAT_SCHEMA: Schema = {
   type: Type.OBJECT,
   properties: {
     reply: { type: Type.STRING },
-    quickReplies: { type: Type.ARRAY, items: { type: Type.STRING } },
+    quickReplies: { type: Type.ARRAY, maxItems: '4', items: { type: Type.STRING } },
     preferences: {
       type: Type.OBJECT,
       properties: {
@@ -50,12 +50,16 @@ export const PATH_SCHEMA: Schema = {
     summary: { type: Type.STRING },
     modules: {
       type: Type.ARRAY,
+      minItems: '3',
+      maxItems: '8',
       items: {
         type: Type.OBJECT,
         properties: {
           title: { type: Type.STRING },
           lessons: {
             type: Type.ARRAY,
+            minItems: '2',
+            maxItems: '6',
             items: { type: Type.OBJECT, properties: { title: { type: Type.STRING } }, required: ['title'] },
           },
         },

@@ -47,8 +47,23 @@ describe('validateChatOutput', () => {
     expect(out.preferences.level).toBeUndefined();
     expect(out.preferences.topic).toBe('SQL');
   });
-  it('rejects more than 4 quick replies', () => {
-    expect(code(() => validateChatOutput(chat({ quickReplies: ['a', 'b', 'c', 'd', 'e'] })))).toBe('AI_INVALID_OUTPUT');
+  it('keeps only the first 4 of 5 quick replies', () => {
+    expect(validateChatOutput(chat({ quickReplies: ['a', 'b', 'c', 'd', 'e'] })).quickReplies).toEqual(['a', 'b', 'c', 'd']);
+  });
+  it('drops empty, over-40-char and non-string quick replies', () => {
+    expect(validateChatOutput(chat({ quickReplies: ['a', '', 'x'.repeat(41), 7, 'x'.repeat(40)] })).quickReplies).toEqual([
+      'a',
+      'x'.repeat(40),
+    ]);
+  });
+  it('drops bad quick replies before taking the first 4', () => {
+    expect(validateChatOutput(chat({ quickReplies: ['', 'a', 'b', 'c', 'd'] })).quickReplies).toEqual(['a', 'b', 'c', 'd']);
+  });
+  it('still rejects a 601-char reply', () => {
+    expect(code(() => validateChatOutput(chat({ reply: 'x'.repeat(601) })))).toBe('AI_INVALID_OUTPUT');
+  });
+  it('rejects quickReplies that is not an array', () => {
+    expect(code(() => validateChatOutput(chat({ quickReplies: 'a' })))).toBe('AI_INVALID_OUTPUT');
   });
   it('rejects non-object output', () => {
     expect(code(() => validateChatOutput('nope'))).toBe('AI_INVALID_OUTPUT');

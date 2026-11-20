@@ -43,12 +43,7 @@ const invalid = () => new AiError('AI_INVALID_OUTPUT', false);
 
 class ChatOutputDto {
   @IsString() @IsNotEmpty() @MaxLength(600) reply: string;
-  @IsArray()
-  @ArrayMaxSize(4)
-  @IsString({ each: true })
-  @IsNotEmpty({ each: true })
-  @MaxLength(40, { each: true })
-  quickReplies: string[];
+  @IsArray() quickReplies: unknown[];
   @IsBoolean() ready: boolean;
   @IsBoolean() offTopic: boolean;
 }
@@ -91,7 +86,10 @@ export function validateChatOutput(raw: unknown): ChatOutput {
     delete (prefs as Record<string, unknown>)[e.property];
   return {
     reply: dto.reply,
-    quickReplies: dto.quickReplies,
+    // Small overruns are repaired, not failed: drop bad chips, keep the first 4.
+    quickReplies: dto.quickReplies
+      .filter((q): q is string => typeof q === 'string' && q.trim() !== '' && q.length <= 40)
+      .slice(0, 4),
     ready: dto.ready,
     offTopic: dto.offTopic,
     preferences: { ...prefs },
