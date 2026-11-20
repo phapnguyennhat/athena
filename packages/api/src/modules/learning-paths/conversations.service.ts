@@ -59,6 +59,8 @@ export class ConversationsService {
   /** Closes the user's open conversation (and its draft path), then opens a fresh one with the greeting. */
   async startOver(userId: string): Promise<ConversationView> {
     const conv = await this.ds.transaction(async (m) => {
+      // Serialize per user so concurrent start-overs can't both insert an open conversation.
+      await m.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`path_conv:${userId}`]);
       const old = await m.findOneBy(PathConversation, { userId, status: 'open' });
       if (old) {
         await m.delete(LearningPathEntity, { conversationId: old.id, status: 'draft' });
@@ -66,7 +68,7 @@ export class ConversationsService {
       }
       const fresh = await m.save(m.create(PathConversation, { userId }));
       await m.save(
-        m.create(PathMessage, { conversationId: fresh.id, role: 'assistant', content: GREETING, quickReplies: GREETING_QUICK_REPLIES }),
+        m.create(PathMessage, { conversationId: fresh.id, role: 'assistant', content: GREETING, quickReplies: GREETING_QUICK_REPLIES, createdAt: new Date() }),
       );
       return fresh;
     });
@@ -81,15 +83,16 @@ export class ConversationsService {
   }
 
   async sendMessage(userId: string, conversationId: string, content: string) {
-    const conv = await this.getOpenForUser(userId, conversationId);
-    if (conv.userTurns >= MAX_USER_TURNS)
-      throw err(ConflictException, 409, 'CONVERSATION_LIMIT', 'This conversation reached its turn limit. Start a new one.');
-
-    const key = `chat:${conv.id}`;
+    await this.getOpenForUser(userId, conversationId);
+    const key = `chat:${conversationId}`;
     if ((await this.redis.set(key, '1', 'EX', LOCK_TTL_SECONDS, 'NX')) !== 'OK')
       throw err(ConflictException, 409, 'TURN_IN_PROGRESS', 'The previous message is still being answered.');
 
     try {
+      // Re-read under the lock: the snapshot above may predate a turn that just committed or a start-over.
+      const conv = await this.getOpenForUser(userId, conversationId);
+      if (conv.userTurns >= MAX_USER_TURNS)
+        throw err(ConflictException, 409, 'CONVERSATION_LIMIT', 'This conversation reached its turn limit. Start a new one.');
       const stored = await this.msgs.find({
         where: { conversationId: conv.id },
         order: { createdAt: 'DESC' },
@@ -120,6 +123,9 @@ export class ConversationsService {
       // Explicit, distinct timestamps: now() is transaction-start time, so same-transaction rows would tie.
       const at = new Date();
       await this.ds.transaction(async (m) => {
+        // The conversation may have been closed (start-over) while the model was thinking.
+        const live = await m.findOne(PathConversation, { where: { id: conv.id }, lock: { mode: 'pessimistic_write' } });
+        if (live?.status !== 'open') throw err(ConflictException, 409, 'CONVERSATION_CLOSED', 'Conversation is closed.');
         await m.save(m.create(PathMessage, { conversationId: conv.id, role: 'user', content, quickReplies: null, createdAt: at }));
         await m.save(
           m.create(PathMessage, {
@@ -130,7 +136,7 @@ export class ConversationsService {
             createdAt: new Date(at.getTime() + 1),
           }),
         );
-        await m.update(PathConversation, conv.id, { preferences, ready, userTurns: conv.userTurns + 1 });
+        await m.update(PathConversation, conv.id, { preferences, ready, userTurns: () => 'user_turns + 1' });
       });
       return { reply: out.reply, quickReplies: out.quickReplies, preferences, ready };
     } finally {

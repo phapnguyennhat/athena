@@ -161,4 +161,25 @@ describe('Conversations (e2e)', () => {
     await a.send(ida, 'x').expect(429);
     await b.send(idb, 'x').expect(409);
   });
+
+  it('concurrent start-over: both succeed and exactly one open conversation remains', async () => {
+    const u = await newUser();
+    const [a, b] = await Promise.all([u.start(), u.start()]);
+    expect([a.status, b.status]).toEqual([201, 201]);
+    const { userId } = await ds.getRepository(PathConversation).findOneByOrFail({ id: a.body.id });
+    expect(await ds.getRepository(PathConversation).countBy({ userId, status: 'open' })).toBe(1);
+  });
+
+  it('a turn in flight when the conversation is closed by start-over gets 409 and writes nothing', async () => {
+    const u = await newUser();
+    const { id } = (await u.start()).body;
+    ai.delayMs = 400;
+    const turn = u.send(id, 'SQL').then((r) => r);
+    await new Promise((r) => setTimeout(r, 150));
+    await u.start().expect(201);
+    const res = await turn;
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ code: 'CONVERSATION_CLOSED' });
+    expect(await ds.getRepository(PathMessage).countBy({ conversationId: id, role: 'user' })).toBe(0);
+  });
 });
