@@ -10,6 +10,7 @@ import type { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { AiJob } from '../src/modules/ai-jobs/ai-job.entity.js';
 import { aiJobsConsumerOptions } from '../src/modules/ai-jobs/ai-jobs.constants.js';
+import { LearningPathEntity } from '../src/modules/learning-paths/entities/learning-path.entity.js';
 import { PathConversation } from '../src/modules/learning-paths/entities/path-conversation.entity.js';
 import { PathAi } from '../src/modules/learning-paths/path-ai.js';
 import { StubPathAi } from '../src/modules/learning-paths/stub-path-ai.js';
@@ -164,6 +165,19 @@ describe('Path generation (e2e)', () => {
     expect(res.body).toMatchObject({ code: 'CONVERSATION_CLOSED' });
     await u.generate(id).expect(409);
     await u.current().expect(404);
+  });
+
+  it('start-over while the job is generating: new view has no activeJob, the job fails CONVERSATION_CLOSED, nothing saved', async () => {
+    const u = await newUser();
+    const id = await u.readyConversation();
+    ai.delayMs = 800;
+    const jobId = (await u.generate(id).expect(202)).body.id;
+    for (let i = 0; i < 50 && (await u.job(jobId)).body.status !== 'running'; i++) await new Promise((r) => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 100));
+    const fresh = (await u.start().expect(201)).body;
+    expect(fresh.activeJob).toBeNull(); // the old conversation's job is still running here
+    expect(await u.settle(jobId)).toMatchObject({ status: 'failed', errorCode: 'CONVERSATION_CLOSED', resultId: null });
+    expect(await ds.getRepository(LearningPathEntity).countBy({ conversationId: id })).toBe(0);
   });
 
   it("another user's job and path return 404", async () => {

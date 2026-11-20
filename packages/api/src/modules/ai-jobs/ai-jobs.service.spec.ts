@@ -1,8 +1,10 @@
-import { of } from 'rxjs';
+import { ServiceUnavailableException } from '@nestjs/common';
+import { of, throwError } from 'rxjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiError } from '../learning-paths/ai-output.js';
 import type { AiJob } from './ai-job.entity.js';
 import { AiJobsService } from './ai-jobs.service.js';
+import { JobError } from './job-handlers.js';
 
 const queued = () => ({
   id: 'job-1',
@@ -109,6 +111,14 @@ describe('AiJobsService.process', () => {
     });
   });
 
+  it('process fails with a JobError code without retrying', async () => {
+    const { repo, handler, svc } = setup();
+    handler.run.mockRejectedValue(new JobError('CONVERSATION_CLOSED'));
+    await svc.process('job-1');
+    expect(handler.run).toHaveBeenCalledTimes(1);
+    expect(repo.update).toHaveBeenLastCalledWith('job-1', { status: 'failed', errorCode: 'CONVERSATION_CLOSED' });
+  });
+
   it('process skips a job that is not queued', async () => {
     const { repo, handler, svc } = setup({ ...queued(), status: 'running' });
     await svc.process('job-1');
@@ -148,5 +158,15 @@ describe('AiJobsService.enqueue', () => {
     });
     expect(job.id).toBe('new-job');
     expect(client.emit).toHaveBeenCalledWith('ai.job', { jobId: 'new-job' });
+  });
+
+  it('a publish failure marks the job failed with QUEUE_UNAVAILABLE and throws 503', async () => {
+    const { repo, client, svc } = setup();
+    repo.save.mockResolvedValue({ ...queued(), id: 'new-job' });
+    client.emit.mockReturnValue(throwError(() => new Error('broker down')));
+    const err = await svc.enqueue('u1', 'generate_path', { conversationId: 'c1' }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(ServiceUnavailableException);
+    expect((err as ServiceUnavailableException).getResponse()).toMatchObject({ statusCode: 503, code: 'QUEUE_UNAVAILABLE' });
+    expect(repo.update).toHaveBeenCalledWith('new-job', { status: 'failed', errorCode: 'QUEUE_UNAVAILABLE' });
   });
 });

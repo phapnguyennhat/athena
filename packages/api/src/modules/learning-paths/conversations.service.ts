@@ -61,7 +61,8 @@ export class ConversationsService {
     const conv = await this.ds.transaction(async (m) => {
       // Serialize per user so concurrent start-overs can't both insert an open conversation.
       await m.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`path_conv:${userId}`]);
-      const old = await m.findOneBy(PathConversation, { userId, status: 'open' });
+      // Row lock before touching its drafts: same lock order as the generate handler and start.
+      const old = await m.findOne(PathConversation, { where: { userId, status: 'open' }, lock: { mode: 'pessimistic_write' } });
       if (old) {
         await m.delete(LearningPathEntity, { conversationId: old.id, status: 'draft' });
         await m.update(PathConversation, old.id, { status: 'closed' });

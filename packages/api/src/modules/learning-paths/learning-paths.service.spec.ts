@@ -29,6 +29,7 @@ const stored = {
 
 function setup(path: Partial<LearningPathEntity> | null) {
   const m = {
+    findOneBy: vi.fn().mockResolvedValue(path),
     findOne: vi.fn().mockResolvedValue(path),
     delete: vi.fn(),
     update: vi.fn(),
@@ -70,6 +71,8 @@ describe('LearningPathsService', () => {
     expect(m.insert).toHaveBeenCalledWith(PathLesson, [{ moduleId: 'new-m0', position: 0, title: 'Một bài' }]);
     expect(m.update).toHaveBeenCalledWith(LearningPathEntity, 'p1', { status: 'active' });
     expect(m.update).toHaveBeenCalledWith(PathConversation, 'c1', { status: 'closed' });
+    // Conversation is locked before the path (same order as the generate handler).
+    expect(m.findOne.mock.calls.map(([e]) => e)).toEqual([PathConversation, LearningPathEntity]);
   });
 
   it('start ignores edits once the path is active', async () => {

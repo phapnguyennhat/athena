@@ -48,6 +48,12 @@ export class LearningPathsService {
   /** Accepts the reviewed draft: applies edits (draft only), activates it and closes its conversation. */
   async start(userId: string, id: string, modules?: LearningPath['modules']): Promise<LearningPathView> {
     await this.ds.transaction(async (m) => {
+      // Lock order everywhere: conversation, then its paths (the generate handler and start-over do the same).
+      const pre = await m.findOneBy(LearningPathEntity, { id, userId });
+      if (!pre) throw notFound();
+      if (pre.conversationId)
+        await m.findOne(PathConversation, { where: { id: pre.conversationId }, lock: { mode: 'pessimistic_write' } });
+      // Re-read under lock: a regenerate may have replaced this draft meanwhile.
       const path = await m.findOne(LearningPathEntity, { where: { id, userId }, lock: { mode: 'pessimistic_write' } });
       if (!path) throw notFound();
       // Review edits only apply to a draft; an active path keeps its structure.
