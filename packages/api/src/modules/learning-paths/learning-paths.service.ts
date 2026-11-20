@@ -10,6 +10,7 @@ import type {
   PreferencesDto,
 } from './dto/learning-path.dto.js';
 import type { ChatRequestDto } from './dto/learning-path.dto.js';
+import { serverReady } from './ai-output.js';
 import { PathAi } from './path-ai.js';
 
 @Injectable()
@@ -19,8 +20,17 @@ export class LearningPathsService {
 
   constructor(private readonly ai: PathAi) {}
 
-  chat({ messages, preferences }: ChatRequestDto): Promise<ChatReply> {
-    return this.ai.chat(messages, preferences ?? {});
+  async chat({ messages, preferences }: ChatRequestDto): Promise<ChatReply> {
+    const out = await this.ai.chat({
+      history: messages,
+      preferences: preferences ?? {},
+    });
+    return {
+      reply: out.reply,
+      quickReplies: out.quickReplies,
+      preferences: out.preferences,
+      ready: serverReady(out),
+    };
   }
 
   async generate(

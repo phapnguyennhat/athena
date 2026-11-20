@@ -1,11 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type {
-  ChatMessageDto,
-  ChatReply,
-  Level,
-  PreferencesDto,
-} from './dto/learning-path.dto.js';
-import { PathAi } from './path-ai.js';
+import type { Level, Preferences } from './dto/learning-path.dto.js';
+import { PathAi, type ChatOutput, type ChatTurnInput, type PathOutput } from './path-ai.js';
 
 const LEVEL_REPLIES = ['Cơ bản', 'Trung cấp', 'Nâng cao'];
 const TIME_REPLIES = ['15 phút', '30 phút', '60 phút'];
@@ -25,13 +20,10 @@ function parseMinutes(text: string): number | undefined {
 /** Deterministic slot filling, no model: topic, then level, then daily time, then an optional goal. */
 @Injectable()
 export class StubPathAi extends PathAi {
-  async chat(
-    messages: ChatMessageDto[],
-    prefs: PreferencesDto,
-  ): Promise<ChatReply> {
-    const p = { ...prefs };
+  async chat({ history, preferences }: ChatTurnInput): Promise<ChatOutput> {
+    const p = { ...preferences };
     const last =
-      messages.findLast((m) => m.role === 'user')?.content.trim() ?? '';
+      history.findLast((m) => m.role === 'user')?.content.trim() ?? '';
     // The goal question is asked once the required fields are known; any answer to it (a goal or a skip) completes the brief.
     const goalAnswered = !!(last && p.topic && p.level && p.dailyMinutes);
     if (last) {
@@ -48,6 +40,7 @@ export class StubPathAi extends PathAi {
         quickReplies: [],
         preferences: p,
         ready,
+        offTopic: false,
       };
     if (!p.level)
       return {
@@ -55,6 +48,7 @@ export class StubPathAi extends PathAi {
         quickReplies: LEVEL_REPLIES,
         preferences: p,
         ready,
+        offTopic: false,
       };
     if (!p.dailyMinutes)
       return {
@@ -62,6 +56,7 @@ export class StubPathAi extends PathAi {
         quickReplies: TIME_REPLIES,
         preferences: p,
         ready,
+        offTopic: false,
       };
     if (!ready)
       return {
@@ -69,17 +64,20 @@ export class StubPathAi extends PathAi {
         quickReplies: ['Không có mục tiêu cụ thể'],
         preferences: p,
         ready,
+        offTopic: false,
       };
     return {
       reply: 'Mình đã có đủ thông tin. Bấm "Tạo lộ trình" khi bạn sẵn sàng.',
       quickReplies: [],
       preferences: p,
       ready,
+      offTopic: false,
     };
   }
 
-  async generate(p: PreferencesDto) {
-    const topic = p.topic ?? 'Chủ đề của bạn';
+  async generate(p: Preferences): Promise<PathOutput> {
+    // Trimmed so lesson titles stay within the 120-char output bound.
+    const topic = (p.topic ?? 'Chủ đề của bạn').slice(0, 50);
     const lessonsPerModule = p.dailyMinutes && p.dailyMinutes <= 15 ? 3 : 4;
     const modules = ['Nền tảng', 'Thực hành cơ bản', 'Áp dụng vào dự án'].map(
       (name, m) => ({

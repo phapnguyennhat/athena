@@ -1,17 +1,14 @@
 import type {
-  ChatMessageDto,
-  ChatReply,
-  PreferencesDto,
-} from './dto/learning-path.dto.js';
-import type { LearningPath } from './dto/learning-path.dto.js';
+  ChatOutput,
+  ChatTurnInput,
+  PathOutput,
+} from './ai-output.js';
+import type { Preferences } from './dto/learning-path.dto.js';
 
-/** The AI seam. Replace StubPathAi with a Gemini-backed implementation; the HTTP contract stays as is. */
+export type { ChatOutput, ChatTurnInput, PathOutput };
+
+/** The AI seam. Implementations return unvalidated-shape-safe output (Gemini output goes through ai-output.ts). */
 export abstract class PathAi {
-  abstract chat(
-    messages: ChatMessageDto[],
-    preferences: PreferencesDto,
-  ): Promise<ChatReply>;
-  abstract generate(
-    preferences: PreferencesDto,
-  ): Promise<Omit<LearningPath, 'id' | 'status'>>;
+  abstract chat(input: ChatTurnInput): Promise<ChatOutput>;
+  abstract generate(p: Preferences): Promise<PathOutput>;
 }
