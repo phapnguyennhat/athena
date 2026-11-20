@@ -1,34 +1,55 @@
 import { Redirect, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, ScrollView as RNScrollView } from 'react-native';
+import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, ScrollView as RNScrollView } from 'react-native';
 
 import { useAuth } from '@/auth';
 import { StateMark } from '@/components/state-mark';
+import { TypingBubble } from '@/components/typing-bubble';
 import { ApiError } from '@/lib/api';
 import {
-  chatPath,
   generatePath,
+  getCurrentConversation,
+  getJob,
+  getPath,
+  sendMessage,
+  startConversation,
   startPath,
   type ChatMessage,
+  type ConversationView,
+  type JobView,
   type LearningPath,
   type Preferences,
 } from '@/lib/learning-paths-api';
+import { getSocket, onJobUpdated } from '@/lib/socket';
 import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View, useCSSVariable } from '@/tw';
 
-type Step = 'chat' | 'generating' | 'review';
+type Step = 'loading' | 'chat' | 'generating' | 'review';
+/** An API error or a failed job's code; anything else (e.g. network) falls back to the generic copy. */
+type Failure = { status?: number; code?: string | null };
 
-const GREETING: ChatMessage = {
-  role: 'assistant',
-  content: 'Chào bạn! Bạn muốn học chủ đề gì? Cứ nói tự nhiên, mình sẽ hỏi thêm vài điều để soạn lộ trình.',
-};
-const TOPIC_IDEAS = ['SQL căn bản', 'Tiếng Anh giao tiếp', 'Tài chính cá nhân'];
 const LEVEL_LABEL = { beginner: 'Cơ bản', intermediate: 'Trung cấp', advanced: 'Nâng cao' } as const;
+const JOB_POLL_MS = 15_000;
 
-function errorText(e: unknown) {
-  if (e instanceof ApiError && e.status === 401) return 'Phiên đăng nhập đã hết hạn. Hãy đăng xuất và đăng nhập lại.';
-  return 'Có lỗi xảy ra. Kiểm tra kết nối rồi thử lại.';
+const ERROR_COPY: Record<string, string> = {
+  AI_UNAVAILABLE: 'AI đang bận, thử lại sau ít phút.',
+  TURN_IN_PROGRESS: 'Đợi AI trả lời xong đã nhé.',
+  CONVERSATION_LIMIT: 'Cuộc trò chuyện đã dài quá. Bắt đầu lại nhé?',
+  CONVERSATION_CLOSED: 'Lộ trình này đã bắt đầu. Hãy tạo lộ trình mới.',
+  TOPIC_REJECTED: 'Mình không thể soạn lộ trình cho chủ đề này.',
+  AI_INVALID_OUTPUT: 'Chưa soạn được lộ trình. Thử lại nhé.',
+};
+
+function errorText(e: Failure) {
+  if (e.status === 401) return 'Phiên đăng nhập đã hết hạn. Hãy đăng xuất và đăng nhập lại.';
+  if (e.status === 429) return 'Bạn thao tác hơi nhanh, thử lại sau một lúc.';
+  return (e.code && ERROR_COPY[e.code]) || 'Có lỗi xảy ra. Kiểm tra kết nối rồi thử lại.';
 }
+
+const currentConversation = async () => (await getCurrentConversation()) ?? (await startConversation());
+const toFailure = (e: unknown): Failure => (e instanceof ApiError ? e : {});
+/** These errors are only fixed by a fresh conversation. */
+const needsRestart = (e: Failure | null) => e?.code === 'CONVERSATION_LIMIT' || e?.code === 'CONVERSATION_CLOSED';
 
 /** Required before generating; goal stays optional. Mirrors the server's `ready` rule. */
 const missingCount = (p: Preferences) => [p.topic, p.level, p.dailyMinutes].filter((v) => !v).length;
@@ -123,18 +144,20 @@ function TextButton({ label, onPress }: { label: string; onPress: () => void }) 
 
 export default function NewPathScreen() {
   const router = useRouter();
-  const { session, status } = useAuth();
-  const token = session?.accessToken ?? '';
+  const { status } = useAuth();
 
-  const [step, setStep] = useState<Step>('chat');
-  const [messages, setMessages] = useState<ChatMessage[]>([GREETING]);
+  const [step, setStep] = useState<Step>('loading');
+  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [prefs, setPrefs] = useState<Preferences>({});
-  const [quick, setQuick] = useState<string[]>(TOPIC_IDEAS);
   // The chatbot decides when it has enough to build the path; the generate button waits for it.
   const [ready, setReady] = useState(false);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<Failure | null>(null);
+  // On the generating step, "Thử lại" reloads the conversation instead of starting another (costly) job.
+  const [retryLoad, setRetryLoad] = useState(false);
   const [path, setPath] = useState<LearningPath | null>(null);
   // The user's edited copy of the draft's modules; compared by reference to know if anything changed.
   const [modules, setModules] = useState<LearningPath['modules']>([]);
@@ -144,47 +167,144 @@ export default function NewPathScreen() {
   const placeholder = useCSSVariable('--color-ink-muted');
   const missing = missingCount(prefs);
 
+  const showDraft = useCallback((draft: LearningPath) => {
+    setPath(draft);
+    setModules(draft.modules);
+    setStep('review');
+  }, []);
+
+  /** Resumes a conversation wherever it left off: generating, reviewing a draft, or chatting. */
+  const open = useCallback(
+    async (c: ConversationView) => {
+      setConversationId(c.id);
+      setMessages(c.messages);
+      setPrefs(c.preferences);
+      setReady(c.ready);
+      setPath(null);
+      if (c.activeJob) {
+        setJobId(c.activeJob.id);
+        setStep('generating');
+      } else if (c.draftPathId) {
+        showDraft(await getPath(c.draftPathId));
+      } else {
+        setStep('chat');
+      }
+    },
+    [showDraft],
+  );
+
+  useEffect(() => {
+    if (status !== 'signedIn') return;
+    currentConversation()
+      .then(open)
+      .catch((e: unknown) => setError(toFailure(e)));
+  }, [status, open]);
+
+  const reload = (fetch: () => Promise<ConversationView>) => {
+    setStep('loading');
+    setError(null);
+    fetch()
+      .then(open)
+      .catch((e: unknown) => setError(toFailure(e)));
+  };
+  const resume = () => reload(currentConversation);
+  const restart = () => reload(startConversation);
+
+  // Wait for the job: socket events, plus re-reads on connect, on foreground and every 15 s (events can be missed).
+  useEffect(() => {
+    if (step !== 'generating' || !jobId || error) return;
+    // Only a terminal status changes the screen, and only once, so stale or duplicate updates are ignored.
+    let settled = false;
+    let active = true;
+    const apply = async (job: Pick<JobView, 'status' | 'resultId' | 'errorCode'>) => {
+      if (settled) return;
+      if (job.status === 'failed') {
+        settled = true;
+        setRetryLoad(false);
+        setError({ code: job.errorCode });
+      } else if (job.status === 'succeeded' && job.resultId) {
+        settled = true;
+        try {
+          const draft = await getPath(job.resultId);
+          if (active) showDraft(draft);
+        } catch (e) {
+          if (!active) return;
+          setRetryLoad(true);
+          setError(toFailure(e));
+        }
+      }
+    };
+    const check = () => {
+      getJob(jobId).then(
+        (j) => {
+          if (active) apply(j);
+        },
+        () => undefined, // the next trigger retries
+      );
+    };
+    const socket = getSocket();
+    const off = onJobUpdated(jobId, apply);
+    socket.on('connect', check);
+    const appState = AppState.addEventListener('change', (s) => s === 'active' && check());
+    const timer = setInterval(check, JOB_POLL_MS);
+    check(); // the job may have finished before we subscribed
+    return () => {
+      active = false;
+      off();
+      socket.off('connect', check);
+      appState.remove();
+      clearInterval(timer);
+    };
+  }, [step, jobId, error, showDraft]);
+
   if (status !== 'signedIn') return <Redirect href="/welcome" />;
 
   const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
-  const generate = async (p: Preferences) => {
-    setStep('generating');
+  const generate = async () => {
+    if (!conversationId) return;
+    setJobId(null);
+    setRetryLoad(false);
     setError(null);
+    setStep('generating');
     try {
-      const draft = await generatePath(token, p);
-      setPath(draft);
-      setModules(draft.modules);
-      setStep('review');
+      setJobId((await generatePath(conversationId)).id);
     } catch (e) {
-      setError(errorText(e));
+      setError(toFailure(e));
     }
+  };
+
+  const backToChat = () => {
+    setError(null);
+    setStep('chat');
   };
 
   const send = async (content: string) => {
     const value = content.trim();
-    if (!value || sending) return;
-    const next = [...messages, { role: 'user', content: value } as ChatMessage];
-    setMessages(next);
+    if (!value || sending || !conversationId) return;
+    const before = messages;
+    setMessages([...before, { role: 'user', content: value, quickReplies: null }]);
     setText('');
-    setQuick([]);
     setSending(true);
     setError(null);
     try {
-      // The greeting is local, so it is not part of the conversation the server sees.
-      const r = await chatPath(token, next.slice(1), prefs);
-      setMessages([...next, { role: 'assistant', content: r.reply }]);
+      const r = await sendMessage(conversationId, value);
+      setMessages((ms) => [...ms, { role: 'assistant', content: r.reply, quickReplies: r.quickReplies }]);
       setPrefs(r.preferences);
-      setQuick(r.quickReplies);
       setReady(r.ready);
     } catch (e) {
-      setError(errorText(e));
-      setMessages(messages);
-      setText(value);
+      setError(toFailure(e));
+      setMessages(before);
+      // Give the text back unless the user already started typing something new.
+      setText((t) => t || value);
     } finally {
       setSending(false);
     }
   };
+
+  // Quick replies belong to the latest assistant message only.
+  const last = messages.at(-1);
+  const quick = last?.role === 'assistant' ? (last.quickReplies ?? []) : [];
 
   const edited = path !== null && modules !== path.modules;
   const lessonCount = modules.reduce((n, m) => n + m.lessons.length, 0);
@@ -200,12 +320,34 @@ export default function NewPathScreen() {
     if (!path) return;
     setError(null);
     try {
-      await startPath(token, path.id, edited ? modules : undefined);
+      await startPath(path.id, edited ? modules : undefined);
       router.dismissTo('/courses');
     } catch (e) {
-      setError(errorText(e));
+      setError(toFailure(e));
     }
   };
+
+  if (step === 'loading') {
+    return (
+      <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
+        <Header title="Tạo lộ trình với AI" onBack={close} />
+        <View className="flex-1 items-center justify-center gap-4 px-5">
+          {error ? (
+            <>
+              <Text accessibilityRole="alert" className="text-center text-[16px] leading-6 text-ink">
+                {errorText(error)}
+              </Text>
+              <View className="w-full">
+                <PrimaryButton label="Thử lại" onPress={resume} />
+              </View>
+            </>
+          ) : (
+            <ActivityIndicator size="large" />
+          )}
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (step === 'generating') {
     return (
@@ -215,11 +357,15 @@ export default function NewPathScreen() {
           {error ? (
             <>
               <Text accessibilityRole="alert" className="text-center text-[16px] leading-6 text-ink">
-                {error}
+                {errorText(error)}
               </Text>
               <View className="w-full gap-1">
-                <PrimaryButton label="Thử lại" onPress={() => generate(prefs)} />
-                <TextButton label="Quay lại trò chuyện" onPress={() => setStep('chat')} />
+                {needsRestart(error) ? (
+                  <PrimaryButton label="Soạn lại từ đầu" onPress={restart} />
+                ) : (
+                  <PrimaryButton label="Thử lại" onPress={retryLoad ? resume : generate} />
+                )}
+                <TextButton label="Quay lại trò chuyện" onPress={backToChat} />
               </View>
             </>
           ) : (
@@ -273,11 +419,12 @@ export default function NewPathScreen() {
         <View className="gap-1 px-5 pb-2">
           {error ? (
             <Text accessibilityRole="alert" className="text-center text-[14px] text-tint-ink">
-              {error}
+              {errorText(error)}
             </Text>
           ) : null}
           <PrimaryButton label="Bắt đầu học" onPress={start} />
-          <TextButton label="Quay lại trò chuyện" onPress={() => setStep('chat')} />
+          <TextButton label="Quay lại trò chuyện" onPress={backToChat} />
+          <TextButton label="Soạn lại từ đầu" onPress={restart} />
         </View>
       </SafeAreaView>
     );
@@ -300,11 +447,14 @@ export default function NewPathScreen() {
           {messages.map((m, i) => (
             <Message key={i} m={m} />
           ))}
-          {sending ? <Text className="pl-10 text-[14px] text-ink-muted">Đang trả lời…</Text> : null}
+          {sending ? <TypingBubble /> : null}
           {error ? (
-            <Text accessibilityRole="alert" className="pl-10 text-[14px] text-tint-ink">
-              {error}
-            </Text>
+            <View className="items-start gap-1 pl-10">
+              <Text accessibilityRole="alert" className="text-[14px] text-tint-ink">
+                {errorText(error)}
+              </Text>
+              {needsRestart(error) ? <TextButton label="Bắt đầu lại" onPress={restart} /> : null}
+            </View>
           ) : null}
         </RNScrollView>
         {/* Once the chatbot is ready the generate button is the only suggested action. */}
@@ -323,7 +473,7 @@ export default function NewPathScreen() {
         ) : null}
         {ready ? (
           <View className="px-5 pb-2">
-            <PrimaryButton label="Tạo lộ trình" disabled={sending} onPress={() => generate(prefs)} />
+            <PrimaryButton label="Tạo lộ trình" disabled={sending} onPress={generate} />
           </View>
         ) : null}
         <View className="mx-4 mb-2 flex-row items-end gap-2 rounded-[26px] border border-line bg-surface py-1.5 pr-1.5 pl-4">

@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 
 import { registerSession } from '@/lib/api';
 import type { TokenPair } from '@/lib/auth-api';
+import { disconnectSocket } from '@/lib/socket';
 
 const ACCESS_KEY = 'athena.accessToken';
 const REFRESH_KEY = 'athena.refreshToken';
@@ -80,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     sessionRef.current = null;
+    disconnectSocket();
     await Promise.all([writeItem(ACCESS_KEY, null), writeItem(REFRESH_KEY, null)]);
     setSessionState(null);
     setStatus('signedOut');
