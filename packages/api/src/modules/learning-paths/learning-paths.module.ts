@@ -2,6 +2,9 @@ import { GoogleGenAI } from '@google/genai';
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AiJob } from '../ai-jobs/ai-job.entity.js';
+import { ConversationsController } from './conversations.controller.js';
+import { ConversationsService } from './conversations.service.js';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathLesson } from './entities/path-lesson.entity.js';
@@ -14,10 +17,11 @@ import { PathAi } from './path-ai.js';
 import { StubPathAi } from './stub-path-ai.js';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([PathConversation, PathMessage, LearningPathEntity, PathModule, PathLesson])],
-  controllers: [LearningPathsController],
+  imports: [TypeOrmModule.forFeature([PathConversation, PathMessage, LearningPathEntity, PathModule, PathLesson, AiJob])],
+  controllers: [LearningPathsController, ConversationsController],
   providers: [
     LearningPathsService,
+    ConversationsService,
     {
       provide: PathAi,
       inject: [ConfigService],

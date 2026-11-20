@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -8,6 +8,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Length,
   Max,
   MaxLength,
   Min,
@@ -93,3 +94,10 @@ export type LearningPath = {
   summary: string;
   modules: { title: string; lessons: { title: string }[] }[];
 };
+
+export class SendMessageDto {
+  @IsString()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Length(1, 500)
+  content: string;
+}
