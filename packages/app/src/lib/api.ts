@@ -1,3 +1,5 @@
+import type { TokenPair } from '@/lib/auth-api';
+
 const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8080').replace(/\/$/, '');
 
 export type ApiErrorBody = {
@@ -44,4 +46,68 @@ export async function apiFetch<T>(
 
   if (!res.ok) throw new ApiError(res.status, body);
   return body as T;
+}
+
+type SessionSource = {
+  get(): { accessToken: string; refreshToken: string } | null;
+  save(pair: TokenPair): Promise<void>;
+  signOut(): Promise<void>;
+};
+
+let source: SessionSource | null = null;
+let refreshing: Promise<string> | null = null;
+
+export function registerSession(next: SessionSource | null) {
+  source = next;
+}
+
+// Refresh tokens rotate, so concurrent 401s must share one call.
+function refreshAccessToken(): Promise<string> {
+  refreshing ??= (async () => {
+    const current = source?.get();
+    if (!current) throw new ApiError(401, { message: 'Not signed in' });
+    // Plain apiFetch (not authFetch) so a 401 here cannot recurse.
+    const pair = await apiFetch<TokenPair>('/auth/refresh', {
+      method: 'POST',
+      json: { refreshToken: current.refreshToken },
+    });
+    await source?.save(pair);
+    return pair.accessToken;
+  })().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+export async function currentAccessToken(): Promise<string | null> {
+  if (refreshing) await refreshing.catch(() => undefined);
+  return source?.get()?.accessToken ?? null;
+}
+
+export async function authFetch<T>(path: string, init: RequestInit & { json?: unknown } = {}): Promise<T> {
+  const send = (token: string) =>
+    apiFetch<T>(path, { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } });
+
+  const token = source?.get()?.accessToken;
+  if (!token) throw new ApiError(401, { message: 'Not signed in' });
+
+  try {
+    return await send(token);
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 401) throw err;
+    // Another request may already have refreshed while this one was in flight.
+    const latest = source?.get()?.accessToken;
+    let fresh: string;
+    if (latest && latest !== token) fresh = latest;
+    else {
+      try {
+        fresh = await refreshAccessToken();
+      } catch (refreshErr) {
+        // Only a server rejection ends the session; a network blip keeps it.
+        if (refreshErr instanceof ApiError) await source?.signOut();
+        throw err;
+      }
+    }
+    return send(fresh);
+  }
 }

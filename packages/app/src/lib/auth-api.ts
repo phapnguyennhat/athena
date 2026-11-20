@@ -1,4 +1,4 @@
-import { apiFetch } from '@/lib/api';
+import { apiFetch, authFetch } from '@/lib/api';
 
 // Mirrors AuthController in packages/api/src/modules/auth/auth.controller.ts.
 export const AUTH_ENDPOINTS = {
@@ -61,16 +61,10 @@ export function refreshSession(body: RefreshTokenBody) {
   return apiFetch<TokenPair>(AUTH_ENDPOINTS.refresh, { method: 'POST', json: body });
 }
 
-export function signOut(body: RefreshTokenBody, accessToken: string) {
-  return apiFetch<void>(AUTH_ENDPOINTS.signOut, {
-    method: 'POST',
-    json: body,
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+export function signOut(body: RefreshTokenBody) {
+  return authFetch<void>(AUTH_ENDPOINTS.signOut, { method: 'POST', json: body });
 }
 
-export function getMe(accessToken: string) {
-  return apiFetch<AuthUser>(AUTH_ENDPOINTS.me, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
+export function getMe() {
+  return authFetch<AuthUser>(AUTH_ENDPOINTS.me);
 }

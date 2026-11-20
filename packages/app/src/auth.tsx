@@ -1,7 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
-import { createContext, use, useEffect, useState, type ReactNode } from 'react';
+import { createContext, use, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
+import { registerSession } from '@/lib/api';
 import type { TokenPair } from '@/lib/auth-api';
 
 const ACCESS_KEY = 'athena.accessToken';
@@ -48,6 +49,9 @@ async function writeItem(key: string, value: string | null) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSessionState] = useState<Session | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
+  // Synchronous mirror so authFetch sees a rotated pair before React re-renders.
+  const sessionRef = useRef<Session | null>(null);
+  const actions = useRef({ setSession: async (_: TokenPair) => {}, signOut: async () => {} });
 
   useEffect(() => {
     let cancelled = false;
@@ -55,7 +59,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const [accessToken, refreshToken] = await Promise.all([readItem(ACCESS_KEY), readItem(REFRESH_KEY)]);
       if (cancelled) return;
       if (accessToken && refreshToken) {
-        setSessionState({ accessToken, refreshToken, expiresIn: 0 });
+        sessionRef.current = { accessToken, refreshToken, expiresIn: 0 };
+        setSessionState(sessionRef.current);
         setStatus('signedIn');
       } else {
         setStatus('signedOut');
@@ -67,16 +72,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setSession = async (pair: TokenPair) => {
+    sessionRef.current = pair;
     await Promise.all([writeItem(ACCESS_KEY, pair.accessToken), writeItem(REFRESH_KEY, pair.refreshToken)]);
     setSessionState(pair);
     setStatus('signedIn');
   };
 
   const signOut = async () => {
+    sessionRef.current = null;
     await Promise.all([writeItem(ACCESS_KEY, null), writeItem(REFRESH_KEY, null)]);
     setSessionState(null);
     setStatus('signedOut');
   };
+
+  useEffect(() => {
+    actions.current = { setSession, signOut };
+    registerSession({
+      get: () => sessionRef.current,
+      save: (pair) => actions.current.setSession(pair),
+      signOut: () => actions.current.signOut(),
+    });
+    return () => registerSession(null);
+  });
 
   return (
     <AuthContext.Provider value={{ status, session, setSession, signOut }}>{children}</AuthContext.Provider>
