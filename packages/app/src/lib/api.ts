@@ -67,11 +67,24 @@ function refreshAccessToken(): Promise<string> {
     const current = source?.get();
     if (!current) throw new ApiError(401, { message: 'Not signed in' });
     // Plain apiFetch (not authFetch) so a 401 here cannot recurse.
-    const pair = await apiFetch<TokenPair>('/auth/refresh', {
-      method: 'POST',
-      json: { refreshToken: current.refreshToken },
-    });
-    await source?.save(pair);
+    let pair: TokenPair;
+    try {
+      pair = await apiFetch<TokenPair>('/auth/refresh', {
+        method: 'POST',
+        json: { refreshToken: current.refreshToken },
+      });
+    } catch (err) {
+      // Only a rejected refresh token ends the session; 429/5xx/network keep it.
+      if (err instanceof ApiError && err.status === 401 && source?.get()?.refreshToken === current.refreshToken) {
+        await source.signOut();
+      }
+      throw err;
+    }
+    // Signed out or re-signed-in meanwhile: do not resurrect or overwrite that session.
+    if (source?.get()?.refreshToken !== current.refreshToken) {
+      throw new ApiError(401, { message: 'Session changed during refresh' });
+    }
+    await source.save(pair);
     return pair.accessToken;
   })().finally(() => {
     refreshing = null;
@@ -102,9 +115,7 @@ export async function authFetch<T>(path: string, init: RequestInit & { json?: un
     else {
       try {
         fresh = await refreshAccessToken();
-      } catch (refreshErr) {
-        // Only a server rejection ends the session; a network blip keeps it.
-        if (refreshErr instanceof ApiError) await source?.signOut();
+      } catch {
         throw err;
       }
     }
