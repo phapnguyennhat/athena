@@ -360,12 +360,19 @@ export default function NewPathScreen() {
                 {errorText(error)}
               </Text>
               <View className="w-full gap-1">
-                {needsRestart(error) ? (
-                  <PrimaryButton label="Soạn lại từ đầu" onPress={restart} />
+                {/* A rejected topic fails again on retry: the only way on is to change it in the chat. */}
+                {error.code === 'TOPIC_REJECTED' ? (
+                  <PrimaryButton label="Quay lại trò chuyện" onPress={backToChat} />
                 ) : (
-                  <PrimaryButton label="Thử lại" onPress={retryLoad ? resume : generate} />
+                  <>
+                    {needsRestart(error) ? (
+                      <PrimaryButton label="Soạn lại từ đầu" onPress={restart} />
+                    ) : (
+                      <PrimaryButton label="Thử lại" onPress={retryLoad ? resume : generate} />
+                    )}
+                    <TextButton label="Quay lại trò chuyện" onPress={backToChat} />
+                  </>
                 )}
-                <TextButton label="Quay lại trò chuyện" onPress={backToChat} />
               </View>
             </>
           ) : (
