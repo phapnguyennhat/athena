@@ -28,6 +28,11 @@ describe('validateEnv', () => {
     expect(env.GEMINI_MODEL).toBe('gemini-2.5-flash');
   });
 
+  it('requires AI_PROVIDER to be set explicitly in production', () => {
+    expect(() => validateEnv({ ...base, NODE_ENV: 'production' })).toThrow(/AI_PROVIDER/);
+    expect(validateEnv({ ...base, NODE_ENV: 'production', AI_PROVIDER: 'stub' }).AI_PROVIDER).toBe('stub');
+  });
+
   it('requires RABBITMQ_URL', () => {
     const { RABBITMQ_URL: _omit, ...rest } = base;
     expect(() => validateEnv(rest)).toThrow(/RABBITMQ_URL/);
