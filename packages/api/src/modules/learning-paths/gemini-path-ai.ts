@@ -5,6 +5,8 @@ import { PathAi } from './path-ai.js';
 import { CHAT_SCHEMA, CHAT_SYSTEM, GENERATE_SYSTEM, PATH_SCHEMA, toContents } from './prompts.js';
 
 const TIMEOUT_MS = 30_000;
+// 2.5 models think by default and thinking tokens count against maxOutputTokens.
+const NO_THINKING = { thinkingBudget: 0 };
 
 export class GeminiPathAi extends PathAi {
   constructor(
@@ -20,6 +22,7 @@ export class GeminiPathAi extends PathAi {
         systemInstruction: CHAT_SYSTEM,
         temperature: 0.4,
         maxOutputTokens: 400,
+        thinkingConfig: NO_THINKING,
         responseSchema: CHAT_SCHEMA,
       }),
     );
@@ -31,6 +34,7 @@ export class GeminiPathAi extends PathAi {
         systemInstruction: GENERATE_SYSTEM,
         temperature: 0.6,
         maxOutputTokens: 2000,
+        thinkingConfig: NO_THINKING,
         responseSchema: PATH_SCHEMA,
       }),
     );
@@ -54,8 +58,9 @@ export class GeminiPathAi extends PathAi {
         }),
         timeout,
       ]);
+      if (!res.text) throw new AiError('AI_INVALID_OUTPUT', false);
       try {
-        return JSON.parse(res.text ?? '');
+        return JSON.parse(res.text);
       } catch {
         throw new AiError('AI_INVALID_OUTPUT', false);
       }
