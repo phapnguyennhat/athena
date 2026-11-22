@@ -1,4 +1,5 @@
 import type { DataSource, EntityManager } from 'typeorm';
+import { SEED } from '../../database/migrations/1763800000000-AddCategories.js';
 
 export const FALLBACK_CATEGORY = 'Khác';
 
@@ -6,14 +7,24 @@ export const FALLBACK_CATEGORY = 'Khác';
 export const slugify = (name: string): string =>
   name
     .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+    .replace(/[\u0300-\u036f]/g, '')
     .replace(/[đĐ]/g, 'd')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
 
+/**
+ * Names offered to the model: seeded ones and ones an active path uses. Rows the model created only for drafts
+ * (maybe discarded, maybe junk from a user's topic) are not shown to other users' prompts.
+ */
 export async function categoryNames(m: EntityManager | DataSource): Promise<string[]> {
-  const rows: { name: string }[] = await m.query(`SELECT name FROM categories ORDER BY name`);
+  const rows: { name: string }[] = await m.query(
+    `SELECT c.name FROM categories c
+     WHERE c.slug = ANY($1)
+        OR EXISTS (SELECT 1 FROM learning_paths p WHERE p.category_id = c.id AND p.status = 'active')
+     ORDER BY c.name LIMIT 200`,
+    [SEED.map((s) => s[0])],
+  );
   return rows.map((r) => r.name);
 }
 

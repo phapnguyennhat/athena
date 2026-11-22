@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { DataSource } from 'typeorm';
 import { databaseOptions } from '../src/database/database.options.js';
-import { resolveCategory, slugify } from '../src/modules/learning-paths/categories.js';
+import { categoryNames, resolveCategory, slugify } from '../src/modules/learning-paths/categories.js';
 
 describe('Categories (e2e)', () => {
   let ds: DataSource;
@@ -41,5 +41,31 @@ describe('Categories (e2e)', () => {
   it('falls back to Khác for a name with no letters or digits', async () => {
     const [khac] = await ds.query(`SELECT id FROM categories WHERE slug = 'khac'`);
     expect(await ds.transaction((m) => resolveCategory(m, '!!!'))).toBe(khac.id);
+  });
+
+  it('offers seeded categories and ones used by an active path, not ones made only for drafts', async () => {
+    const draftOnly = `E2E Nháp ${randomUUID()}`;
+    const used = `E2E Dùng ${randomUUID()}`;
+    const [{ id: userId }] = await ds.query(
+      `INSERT INTO users (email, date_of_birth, full_name) VALUES ($1, '2000-01-01', 'Cat') RETURNING id`,
+      [`cat-${randomUUID()}@example.com`],
+    );
+    try {
+      for (const [name, status] of [
+        [draftOnly, 'draft'],
+        [used, 'active'],
+      ]) {
+        const categoryId = await ds.transaction((m) => resolveCategory(m, name));
+        await ds.query(
+          `INSERT INTO learning_paths (user_id, status, title, summary, category_id) VALUES ($1, $2, 'T', 'S', $3)`,
+          [userId, status, categoryId],
+        );
+      }
+      const names = await categoryNames(ds);
+      expect(names).toEqual(expect.arrayContaining(['Lập trình', 'Khác', used]));
+      expect(names).not.toContain(draftOnly);
+    } finally {
+      await ds.query(`DELETE FROM users WHERE id = $1`, [userId]);
+    }
   });
 });
