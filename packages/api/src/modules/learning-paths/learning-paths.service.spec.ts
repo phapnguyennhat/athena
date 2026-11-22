@@ -52,7 +52,7 @@ function setup(path: Partial<LearningPathEntity> | null) {
     query: vi.fn().mockResolvedValue([{ lesson_id: 'l2', status: 'completed' }]),
   };
   const repo = { findOne: vi.fn().mockResolvedValue(stored) };
-  return { m, repo, svc: new LearningPathsService(ds as never, repo as never) };
+  return { m, repo, svc: new LearningPathsService(ds as never, repo as never, { publish: vi.fn() } as never) };
 }
 
 describe('LearningPathsService', () => {

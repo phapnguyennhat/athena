@@ -96,6 +96,16 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   RABBITMQ_URL: string;
 
+  /** Typesense (community search), e.g. `http://localhost:8108`. */
+  @IsString()
+  @IsNotEmpty()
+  TYPESENSE_URL: string;
+
+  /** Admin key of the Typesense server; server-side only. */
+  @IsString()
+  @IsNotEmpty()
+  TYPESENSE_API_KEY: string;
+
   /** YouTube Data API v3 key, server-side only. Unset: lessons offer a YouTube search link instead of videos. */
   @IsOptional()
   @IsString()

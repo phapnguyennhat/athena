@@ -3,6 +3,7 @@ import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 import { aiJobsConsumerOptions } from './modules/ai-jobs/ai-jobs.constants.js';
+import { searchConsumerOptions } from './modules/search/search.constants.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -12,6 +13,10 @@ async function bootstrap() {
       transport: Transport.RMQ,
       options: aiJobsConsumerOptions(process.env.RABBITMQ_URL!),
     },
+    { inheritAppConfig: true },
+  );
+  app.connectMicroservice<MicroserviceOptions>(
+    { transport: Transport.RMQ, options: searchConsumerOptions(process.env.RABBITMQ_URL!) },
     { inheritAppConfig: true },
   );
 

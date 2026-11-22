@@ -1,23 +1,27 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { LearningPathEntity } from '../learning-paths/entities/learning-path.entity.js';
+import { SearchIndexService } from '../search/search-index.service.js';
+import { PUBLIC_PATH } from './public-path.js';
 
-/** SQL condition (alias `p`) for a path anyone can see and copy: an active original. Hidden originals stay public. */
-export const PUBLIC_PATH = "p.status = 'active' AND p.source_path_id IS NULL";
+export { PUBLIC_PATH };
 
 const notFound = () =>
   new NotFoundException({ statusCode: 404, code: 'COURSE_NOT_FOUND', message: 'Course not found.' });
 
 @Injectable()
 export class CommunityService {
-  constructor(private readonly ds: DataSource) {}
+  constructor(
+    private readonly ds: DataSource,
+    private readonly search: SearchIndexService,
+  ) {}
 
   /**
    * Gives the caller their own active path on a public course: lessons share the original's content rows, progress
    * starts empty, the author's goal is dropped. Idempotent; the owner of a hidden original gets it back instead.
    */
   async copy(userId: string, pathId: string): Promise<{ id: string; created: boolean }> {
-    return this.ds.transaction(async (m) => {
+    const result = await this.ds.transaction(async (m) => {
       // Serialises one user's copies, so a double tap cannot make two.
       await m.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`path_copy:${userId}`]);
       const [src] = await m.query(`SELECT * FROM learning_paths p WHERE p.id = $1 AND ${PUBLIC_PATH}`, [pathId]);
@@ -73,5 +77,8 @@ export class CommunityService {
       );
       return { id: copy.id, created: true };
     });
+    // The source's `copies` changed.
+    if (result.created) await this.search.publish(pathId);
+    return result;
   }
 }

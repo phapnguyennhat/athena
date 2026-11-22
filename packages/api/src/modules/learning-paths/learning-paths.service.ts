@@ -7,6 +7,7 @@ import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathLesson } from './entities/path-lesson.entity.js';
 import { PathModule } from './entities/path-module.entity.js';
 import { LessonContentEntity } from '../lessons/entities/lesson-content.entity.js';
+import { SearchIndexService } from '../search/search-index.service.js';
 
 export type LessonStatus = 'not_started' | 'in_progress' | 'completed';
 
@@ -109,6 +110,7 @@ export class LearningPathsService {
     private readonly ds: DataSource,
     @InjectRepository(LearningPathEntity)
     private readonly paths: Repository<LearningPathEntity>,
+    private readonly search: SearchIndexService,
   ) {}
 
   async get(userId: string, id: string): Promise<LearningPathView> {
@@ -226,6 +228,7 @@ export class LearningPathsService {
           status: 'closed',
         });
     });
+    await this.search.publish(id);
     return this.get(userId, id);
   }
 }

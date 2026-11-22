@@ -56,6 +56,9 @@ Environment variables are read from `.env` (never commit it).
 | `MAIL_FROM` | in use | Sender, e.g. `Athena <no-reply@example.com>` |
 | `RABBITMQ_URL` | required | AMQP URL of the AI job queue. Locally `amqp://<RABBITMQ_USER>:<RABBITMQ_PASSWORD>@localhost:5672` |
 | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | required by `docker compose` | Credentials the local RabbitMQ container is created with; must match `RABBITMQ_URL` |
+| `TYPESENSE_URL` | required | Typesense server for community course search. Locally `http://localhost:8108` (`docker compose up -d typesense`) |
+| `TYPESENSE_API_KEY` | required | Typesense admin key; `docker compose` starts the local server with it. Rebuild the index with `pnpm search:reindex` |
+| `TYPESENSE_COLLECTION` | optional | Collection name, default `community_paths`; e2e uses its own |
 | `RABBITMQ_PORT`, `RABBITMQ_UI_PORT` | optional | Host ports of the local RabbitMQ container, default `5672` and `15672` (management UI at http://localhost:15672) |
 | `GEMINI_API_KEY` | required | Gemini API key; server-side only |
 | `GEMINI_MODEL` | optional | Gemini model, default `gemini-3.8-flash` |
