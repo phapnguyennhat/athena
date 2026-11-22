@@ -1,5 +1,16 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn, type Relation } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  OneToMany,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+  type Relation,
+} from 'typeorm';
 import { User } from '../../users/user.entity.js';
+import { Category } from './category.entity.js';
 import type { Preferences } from '../dto/learning-path.dto.js';
 import { PathConversation } from './path-conversation.entity.js';
 import { PathModule } from './path-module.entity.js';
@@ -39,6 +50,17 @@ export class LearningPathEntity {
   /** ISO 639-1 code of the learner's input; every generated lesson and quiz uses it. */
   @Column({ name: 'content_language', type: 'varchar', length: 16, default: 'vi' })
   contentLanguage: string;
+
+  @Column({ name: 'category_id', type: 'uuid', nullable: true })
+  categoryId: string | null;
+
+  @ManyToOne(() => Category, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'category_id' })
+  category?: Relation<Category> | null;
+
+  /** Lowercase Vietnamese search keywords, set by the LLM. */
+  @Column({ type: 'text', array: true, default: () => `'{}'` })
+  tags: string[];
 
   @OneToMany(() => PathModule, (m) => m.path)
   modules: Relation<PathModule>[];

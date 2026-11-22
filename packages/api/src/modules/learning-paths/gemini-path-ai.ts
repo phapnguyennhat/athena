@@ -1,12 +1,11 @@
-import {
-  ApiError,
-  type GenerateContentConfig,
-  type GoogleGenAI,
-} from '@google/genai';
+import { ApiError, type GenerateContentConfig, type GoogleGenAI } from '@google/genai';
 import {
   AiError,
+  normalizeCategorized,
   validateChatOutput,
   validatePathOutput,
+  type Categorized,
+  type CategorizeInput,
   type ChatOutput,
   type ChatTurnInput,
   type PathOutput,
@@ -22,6 +21,8 @@ import {
   type QuizOutput,
 } from '../lessons/lesson-output.js';
 import {
+  CATEGORIZE_SCHEMA,
+  CATEGORIZE_SYSTEM,
   CHAT_SCHEMA,
   CHAT_SYSTEM,
   GENERATE_SYSTEM,
@@ -59,14 +60,26 @@ export class GeminiPathAi extends PathAi {
     );
   }
 
-  async generate(p: Preferences): Promise<PathOutput> {
+  async generate(p: Preferences, categories: string[]): Promise<PathOutput> {
     return validatePathOutput(
-      await this.call(JSON.stringify(p), {
+      await this.call(JSON.stringify({ ...p, categories }), {
         systemInstruction: GENERATE_SYSTEM,
         temperature: 0.6,
         maxOutputTokens: 2000,
         thinkingConfig: NO_THINKING,
         responseSchema: PATH_SCHEMA,
+      }),
+    );
+  }
+
+  async categorize(input: CategorizeInput, categories: string[]): Promise<Categorized> {
+    return normalizeCategorized(
+      await this.call(JSON.stringify({ ...input, categories }), {
+        systemInstruction: CATEGORIZE_SYSTEM,
+        temperature: 0.2,
+        maxOutputTokens: 300,
+        thinkingConfig: NO_THINKING,
+        responseSchema: CATEGORIZE_SCHEMA,
       }),
     );
   }
@@ -104,9 +117,7 @@ export class GeminiPathAi extends PathAi {
   }
 
   private async call(
-    contents: Parameters<
-      GoogleGenAI['models']['generateContent']
-    >[0]['contents'],
+    contents: Parameters<GoogleGenAI['models']['generateContent']>[0]['contents'],
     config: GenerateContentConfig,
     timeoutMs = TIMEOUT_MS,
   ): Promise<unknown> {
@@ -140,8 +151,7 @@ export class GeminiPathAi extends PathAi {
     } catch (e) {
       if (e instanceof AiError) throw e;
       // SDK status errors: only 429/5xx are worth retrying; anything else (network, abort) is transient.
-      const transient =
-        !(e instanceof ApiError) || e.status === 429 || e.status >= 500;
+      const transient = !(e instanceof ApiError) || e.status === 429 || e.status >= 500;
       throw new AiError('AI_UNAVAILABLE', transient);
     } finally {
       clearTimeout(timer);

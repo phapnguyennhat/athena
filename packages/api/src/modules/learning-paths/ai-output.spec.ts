@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  AiError,
-  serverReady,
-  validateChatOutput,
-  validatePathOutput,
-} from './ai-output.js';
+import { AiError, normalizeCategorized, serverReady, validateChatOutput, validatePathOutput } from './ai-output.js';
 
 const chat = (over: Record<string, unknown> = {}) => ({
   reply: 'Xin chào',
@@ -33,7 +28,9 @@ describe('serverReady', () => {
     expect(serverReady(out)).toBe(false);
   });
   it('drops a daily-minutes field the model may still send', () => {
-    expect(validateChatOutput(chat({ preferences: { topic: 'SQL', level: 'beginner', dailyMinutes: 30 } })).preferences).toEqual({ topic: 'SQL', level: 'beginner' });
+    expect(
+      validateChatOutput(chat({ preferences: { topic: 'SQL', level: 'beginner', dailyMinutes: 30 } })).preferences,
+    ).toEqual({ topic: 'SQL', level: 'beginner' });
   });
   it('is true when topic and level are present', () => {
     expect(serverReady(validateChatOutput(chat()))).toBe(true);
@@ -42,23 +39,30 @@ describe('serverReady', () => {
 
 describe('validateChatOutput', () => {
   it('drops an invalid level and keeps the rest', () => {
-    const out = validateChatOutput(
-      chat({ preferences: { topic: 'SQL', level: 'expert' } }),
-    );
+    const out = validateChatOutput(chat({ preferences: { topic: 'SQL', level: 'expert' } }));
     expect(out.preferences.level).toBeUndefined();
     expect(out.preferences.topic).toBe('SQL');
   });
   it('keeps only the first 4 of 5 quick replies', () => {
-    expect(validateChatOutput(chat({ quickReplies: ['a', 'b', 'c', 'd', 'e'] })).quickReplies).toEqual(['a', 'b', 'c', 'd']);
-  });
-  it('drops empty, over-40-char and non-string quick replies', () => {
-    expect(validateChatOutput(chat({ quickReplies: ['a', '', 'x'.repeat(41), 7, 'x'.repeat(40)] })).quickReplies).toEqual([
+    expect(validateChatOutput(chat({ quickReplies: ['a', 'b', 'c', 'd', 'e'] })).quickReplies).toEqual([
       'a',
-      'x'.repeat(40),
+      'b',
+      'c',
+      'd',
     ]);
   });
+  it('drops empty, over-40-char and non-string quick replies', () => {
+    expect(
+      validateChatOutput(chat({ quickReplies: ['a', '', 'x'.repeat(41), 7, 'x'.repeat(40)] })).quickReplies,
+    ).toEqual(['a', 'x'.repeat(40)]);
+  });
   it('drops bad quick replies before taking the first 4', () => {
-    expect(validateChatOutput(chat({ quickReplies: ['', 'a', 'b', 'c', 'd'] })).quickReplies).toEqual(['a', 'b', 'c', 'd']);
+    expect(validateChatOutput(chat({ quickReplies: ['', 'a', 'b', 'c', 'd'] })).quickReplies).toEqual([
+      'a',
+      'b',
+      'c',
+      'd',
+    ]);
   });
   it('still rejects a 601-char reply', () => {
     expect(code(() => validateChatOutput(chat({ reply: 'x'.repeat(601) })))).toBe('AI_INVALID_OUTPUT');
@@ -86,5 +90,33 @@ describe('validatePathOutput', () => {
   });
   it('accepts 3 modules x 2 lessons', () => {
     expect(validatePathOutput(path([mod(2), mod(2), mod(2)])).modules).toHaveLength(3);
+  });
+});
+
+describe('normalizeCategorized', () => {
+  it('trims the category and cleans tags', () => {
+    expect(normalizeCategorized({ category: '  Lập   trình ', tags: ['SQL', 'sql', ' ', 'Cơ Sở Dữ Liệu'] })).toEqual({
+      category: 'Lập trình',
+      tags: ['sql', 'cơ sở dữ liệu'],
+    });
+  });
+  it('falls back to Khác for an unusable category', () => {
+    for (const category of ['', '   ', '!!!', 42, undefined, 'x'.repeat(61)])
+      expect(normalizeCategorized({ category, tags: [] }).category).toBe('Khác');
+  });
+  it('drops non-array tags, non-strings, over-long tags and keeps at most 5', () => {
+    expect(normalizeCategorized({ category: 'A', tags: 'sql' }).tags).toEqual([]);
+    expect(
+      normalizeCategorized({ category: 'A', tags: ['a', 'b', 1, 'x'.repeat(41), 'c', 'd', 'e', 'f'] }).tags,
+    ).toEqual(['a', 'b', 'c', 'd', 'e']);
+  });
+  it('never throws on garbage', () => {
+    expect(normalizeCategorized(null)).toEqual({ category: 'Khác', tags: [] });
+  });
+  it('is applied by validatePathOutput', () => {
+    expect(
+      validatePathOutput({ ...path([mod(2), mod(2), mod(2)]), category: 'Toán học', tags: ['đại số'] }),
+    ).toMatchObject({ category: 'Toán học', tags: ['đại số'] });
+    expect(validatePathOutput(path([mod(2), mod(2), mod(2)]))).toMatchObject({ category: 'Khác', tags: [] });
   });
 });

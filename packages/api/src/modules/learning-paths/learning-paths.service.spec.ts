@@ -13,6 +13,8 @@ const stored = {
   status: 'draft',
   title: 'SQL',
   summary: 'Tóm tắt',
+  category: { id: 'cat1', slug: 'lap-trinh', name: 'Lập trình' },
+  tags: ['sql'],
   modules: [
     {
       id: 'm2',
@@ -38,9 +40,7 @@ function setup(path: Partial<LearningPathEntity> | null) {
     findOne: vi.fn().mockResolvedValue(path),
     delete: vi.fn(),
     update: vi.fn(),
-    save: vi.fn((_e: unknown, rows: object[]) =>
-      Promise.resolve(rows.map((r, i) => ({ ...r, id: `new-m${i}` }))),
-    ),
+    save: vi.fn((_e: unknown, rows: object[]) => Promise.resolve(rows.map((r, i) => ({ ...r, id: `new-m${i}` })))),
     insert: vi.fn(),
   };
   const ds = {
@@ -59,6 +59,8 @@ describe('LearningPathsService', () => {
       status: 'draft',
       title: 'SQL',
       summary: 'Tóm tắt',
+      category: { id: 'cat1', name: 'Lập trình' },
+      tags: ['sql'],
       progress: { done: 1, total: 3 },
       modules: [
         {
@@ -87,17 +89,11 @@ describe('LearningPathsService', () => {
       conversationId: 'c1',
       status: 'draft',
     });
-    const edited = [
-      { title: 'Chỉ một chương', lessons: [{ title: 'Một bài' }] },
-    ];
+    const edited = [{ title: 'Chỉ một chương', lessons: [{ title: 'Một bài' }] }];
     await svc.start('u1', 'p1', edited);
     expect(m.delete).toHaveBeenCalledWith(PathModule, { pathId: 'p1' });
-    expect(m.save).toHaveBeenCalledWith(PathModule, [
-      { pathId: 'p1', position: 0, title: 'Chỉ một chương' },
-    ]);
-    expect(m.insert).toHaveBeenCalledWith(PathLesson, [
-      { moduleId: 'new-m0', position: 0, title: 'Một bài' },
-    ]);
+    expect(m.save).toHaveBeenCalledWith(PathModule, [{ pathId: 'p1', position: 0, title: 'Chỉ một chương' }]);
+    expect(m.insert).toHaveBeenCalledWith(PathLesson, [{ moduleId: 'new-m0', position: 0, title: 'Một bài' }]);
     expect(m.update).toHaveBeenCalledWith(LearningPathEntity, 'p1', {
       status: 'active',
     });
@@ -105,10 +101,7 @@ describe('LearningPathsService', () => {
       status: 'closed',
     });
     // Conversation is locked before the path (same order as the generate handler).
-    expect(m.findOne.mock.calls.map(([e]) => e)).toEqual([
-      PathConversation,
-      LearningPathEntity,
-    ]);
+    expect(m.findOne.mock.calls.map(([e]) => e)).toEqual([PathConversation, LearningPathEntity]);
   });
 
   it('start ignores edits once the path is active', async () => {
@@ -125,9 +118,7 @@ describe('LearningPathsService', () => {
 
   it('start 404s for a path the user does not own', async () => {
     const { svc, m } = setup(null);
-    await expect(svc.start('u2', 'p1')).rejects.toBeInstanceOf(
-      NotFoundException,
-    );
+    await expect(svc.start('u2', 'p1')).rejects.toBeInstanceOf(NotFoundException);
     expect(m.update).not.toHaveBeenCalled();
   });
 });
