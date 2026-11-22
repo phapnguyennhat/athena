@@ -62,8 +62,10 @@ describe('Categories (e2e)', () => {
         );
       }
       const names = await categoryNames(ds);
-      expect(names).toEqual(expect.arrayContaining(['Lập trình', 'Khác', used]));
+      expect(names).toEqual(expect.arrayContaining(['Lập trình', used]));
       expect(names).not.toContain(draftOnly);
+      // Offered, "Khác" is an easy out: the generate prompt picked it for a cooking course instead of a new category.
+      expect(names).not.toContain('Khác');
     } finally {
       await ds.query(`DELETE FROM users WHERE id = $1`, [userId]);
     }

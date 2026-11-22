@@ -14,14 +14,15 @@ export const slugify = (name: string): string =>
     .replace(/^-+|-+$/g, '');
 
 /**
- * Names offered to the model: seeded ones and ones an active path uses. Rows the model created only for drafts
+ * Names offered to the model: seeded ones and ones an active path uses, minus "Khác" (only a code fallback: offered,
+ * the model picks it instead of creating a fitting category). Rows the model created only for drafts
  * (maybe discarded, maybe junk from a user's topic) are not shown to other users' prompts.
  */
 export async function categoryNames(m: EntityManager | DataSource): Promise<string[]> {
   const rows: { name: string }[] = await m.query(
     `SELECT c.name FROM categories c
-     WHERE c.slug = ANY($1)
-        OR EXISTS (SELECT 1 FROM learning_paths p WHERE p.category_id = c.id AND p.status = 'active')
+     WHERE c.slug <> 'khac' AND (c.slug = ANY($1)
+        OR EXISTS (SELECT 1 FROM learning_paths p WHERE p.category_id = c.id AND p.status = 'active'))
      ORDER BY c.name LIMIT 200`,
     [SEED.map((s) => s[0])],
   );

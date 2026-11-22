@@ -21,9 +21,9 @@ Rules:
 - quickReplies: up to 4 short Vietnamese options for the current question.
 Output JSON only, matching the schema.`;
 
-const CATEGORY_RULES = `category: copy exactly one name from input.categories. Only if none fits, write a new broad
-Vietnamese subject name of 1-4 words (a field of study, not the course topic itself). tags: 1-5 short lowercase
-Vietnamese search keywords.`;
+const CATEGORY_RULES = `category: if one name in input.categories is clearly the subject of this course, copy it
+exactly. Otherwise write a new broad Vietnamese subject name of 1-4 words (a field of study such as "Ẩm thực", not the
+course topic itself). tags: 1-5 short lowercase Vietnamese search keywords.`;
 
 export const GENERATE_SYSTEM = `Design a detailed learning path as JSON matching the schema. Write it in the language the
 learner used for topic/goal (Vietnamese if unclear) and set language to its ISO 639-1 code.
