@@ -54,7 +54,14 @@ export type AttemptResult = {
   streak: StreakView;
 };
 export type CompleteResult = { status: 'completed'; pathProgress: { done: number; total: number }; streak: StreakView };
-export type Me = { id: string; email: string; fullName: string; timezone: string; avatarUrl: string | null };
+export type Me = {
+  id: string;
+  email: string;
+  fullName: string;
+  dateOfBirth: string;
+  timezone: string;
+  avatarUrl: string | null;
+};
 
 export const getDashboard = () => authFetch<Dashboard>('/dashboard');
 export const listPaths = () => authFetch<PathSummary[]>('/learning-paths');
@@ -78,4 +85,6 @@ export async function uploadAvatar(jpegUri: string): Promise<Me> {
   if (!put.ok) throw new ApiError(put.status, { message: 'Không tải được ảnh lên. Thử lại sau nhé.' });
   return authFetch<Me>('/auth/me/avatar', { method: 'PUT', json: { key } });
 }
+export const updateProfile = (body: { fullName: string; dateOfBirth: string }) =>
+  authFetch<Me>('/auth/me', { method: 'PATCH', json: body });
 export const updateTimezone = (timezone: string) => authFetch<Me>('/auth/me', { method: 'PATCH', json: { timezone } });

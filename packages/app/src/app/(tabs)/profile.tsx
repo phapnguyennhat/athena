@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { router } from 'expo-router';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { launchImageLibraryAsync } from 'expo-image-picker';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
@@ -104,10 +105,20 @@ function Group({ title, children }: { title?: string; children: ReactNode[] }) {
   );
 }
 
-function Row({ icon, label, value, accent }: { icon: SymbolViewProps['name']; label: string; value?: ReactNode; accent?: boolean }) {
+type RowProps = { icon: SymbolViewProps['name']; label: string; value?: ReactNode; accent?: boolean; onPress?: () => void };
+
+function Row({ icon, label, value, accent, onPress }: RowProps) {
   const muted = useCSSVariable('--color-ink-muted');
   // --color-tint is only declared in the light block, so read the JS palette (same tint in both themes).
   const tint = accent ? Colors.light.tint : (muted as string);
+  if (onPress) {
+    const chevron = <SymbolView name={{ ios: 'chevron.right', android: 'chevron_right', web: 'chevron_right' }} size={14} tintColor={muted as string} />;
+    return (
+      <Pressable accessibilityRole="button" onPress={onPress} className="active:opacity-70">
+        <Row icon={icon} label={label} accent={accent} value={chevron} />
+      </Pressable>
+    );
+  }
   return (
     <View className="min-h-13 flex-row items-center gap-3 py-2.5 pr-4 pl-4">
       <View className="w-7 items-center">
@@ -239,6 +250,34 @@ export default function ProfileScreen() {
                       thumbColor="#FFFFFF"
                     />
                   }
+                />,
+              ]}
+            </Group>
+
+            <Group title="Tài khoản">
+              {[
+                <Row
+                  key="profile"
+                  icon={{ ios: 'person.fill', android: 'person', web: 'person' }}
+                  label="Sửa họ tên và ngày sinh"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/edit-profile',
+                      params: { fullName: data[0].fullName, dateOfBirth: data[0].dateOfBirth },
+                    })
+                  }
+                />,
+                <Row
+                  key="password"
+                  icon={{ ios: 'key.fill', android: 'key', web: 'key' }}
+                  label="Đổi mật khẩu"
+                  onPress={() => router.push('/change-password')}
+                />,
+                <Row
+                  key="delete"
+                  icon={{ ios: 'trash.fill', android: 'delete', web: 'delete' }}
+                  label="Xoá tài khoản"
+                  onPress={() => router.push('/delete-account')}
                 />,
               ]}
             </Group>

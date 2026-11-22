@@ -9,6 +9,7 @@ export const AUTH_ENDPOINTS = {
   refresh: '/auth/refresh',
   signOut: '/auth/sign-out',
   me: '/auth/me',
+  password: '/auth/me/password',
 } as const;
 
 export type TokenPair = {
@@ -67,4 +68,14 @@ export function signOut(body: RefreshTokenBody) {
 
 export function getMe() {
   return authFetch<AuthUser>(AUTH_ENDPOINTS.me);
+}
+
+/** Signs out every other device; the returned pair keeps this one signed in. */
+export function changePassword(body: { currentPassword: string; newPassword: string }) {
+  return authFetch<TokenPair>(AUTH_ENDPOINTS.password, { method: 'PUT', json: body });
+}
+
+/** Soft-deletes the account; every token stops working. */
+export function deleteAccount(body: { password: string }) {
+  return authFetch<void>(AUTH_ENDPOINTS.me, { method: 'DELETE', json: body });
 }

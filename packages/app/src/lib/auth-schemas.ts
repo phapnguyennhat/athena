@@ -24,6 +24,18 @@ export const verificationSchema = z.object({
   code: z.string().regex(/^\d{6}$/, 'Nhập đủ 6 số từ email.'),
 });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: signInSchema.shape.password,
+    newPassword: signUpCredentialsSchema.shape.password,
+    confirmPassword: z.string(),
+  })
+  .refine((f) => f.confirmPassword === f.newPassword, { path: ['confirmPassword'], message: 'Mật khẩu nhập lại không khớp.' });
+
+export const deleteAccountSchema = signInSchema.pick({ password: true });
+
 export type CredentialsForm = z.infer<typeof signInSchema>;
 export type ProfileForm = z.infer<typeof profileSchema>;
 export type VerificationForm = z.infer<typeof verificationSchema>;
+export type ChangePasswordForm = z.infer<typeof changePasswordSchema>;
+export type DeleteAccountForm = z.infer<typeof deleteAccountSchema>;

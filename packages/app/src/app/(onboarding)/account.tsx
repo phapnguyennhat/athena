@@ -2,12 +2,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, TextInput as RNTextInput } from 'react-native';
-import { Controller, useForm, useWatch, type Control, type FieldValues, type Path } from 'react-hook-form';
+import { ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
+import { Controller, useForm, useWatch } from 'react-hook-form';
 
 import { useAuth } from '@/auth';
 import { BrandMark } from '@/components/brand-mark';
 import { DobField } from '@/components/dob-field';
+import { Field, type InputRef } from '@/components/form-field';
 import { StateMark, type MarkState } from '@/components/state-mark';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -24,8 +25,7 @@ import {
   type ProfileForm,
   type VerificationForm,
 } from '@/lib/auth-schemas';
-import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View, useCSSVariable } from '@/tw';
-type InputRef = React.ComponentRef<typeof RNTextInput>;
+import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View } from '@/tw';
 type Mode = 'sign-in' | 'sign-up';
 type SignUpStep = 'credentials' | 'profile' | 'verify';
 
@@ -50,86 +50,6 @@ function markStates(stepIndex: number, total: number): MarkState[] {
     if (i === stepIndex) return 'progress';
     return 'todo';
   });
-}
-
-type FieldProps<T extends FieldValues> = {
-  control: Control<T>;
-  name: Path<T>;
-  label: string;
-  placeholder?: string;
-  secureTextEntry?: boolean;
-  keyboardType?: 'default' | 'email-address' | 'number-pad' | 'numeric';
-  autoCapitalize?: 'none' | 'sentences' | 'words';
-  autoComplete?: 'email' | 'password' | 'name' | 'birthdate-full' | 'one-time-code' | 'off';
-  textContentType?: 'emailAddress' | 'password' | 'name' | 'birthdate' | 'oneTimeCode' | 'none';
-  editable?: boolean;
-  returnKeyType?: 'next' | 'done' | 'go';
-  onSubmitEditing?: () => void;
-  inputRef?: React.RefObject<InputRef | null>;
-  accessibilityLabel?: string;
-};
-
-function Field<T extends FieldValues>({
-  control,
-  name,
-  label,
-  placeholder,
-  secureTextEntry,
-  keyboardType,
-  autoCapitalize,
-  autoComplete,
-  textContentType,
-  editable = true,
-  returnKeyType,
-  onSubmitEditing,
-  inputRef,
-  accessibilityLabel,
-}: FieldProps<T>) {
-  const placeholderColor = useCSSVariable('--color-ink-muted');
-  return (
-    <View className="gap-1.5">
-      <Text className="text-sm font-semibold text-ink-muted">{label}</Text>
-      <Controller
-        control={control}
-        name={name}
-        render={({ field, fieldState }) => (
-          <>
-            <TextInput
-              ref={(instance) => {
-                field.ref(instance);
-                if (inputRef) inputRef.current = instance;
-              }}
-              value={field.value as string}
-              onChangeText={field.onChange}
-              onBlur={field.onBlur}
-              placeholder={placeholder}
-              placeholderTextColor={typeof placeholderColor === 'string' ? placeholderColor : '#A6A6AE'}
-              secureTextEntry={secureTextEntry}
-              keyboardType={keyboardType}
-              autoCapitalize={autoCapitalize}
-              autoCorrect={false}
-              autoComplete={autoComplete}
-              textContentType={textContentType}
-              editable={editable}
-              returnKeyType={returnKeyType}
-              onSubmitEditing={onSubmitEditing}
-              underlineColorAndroid="transparent"
-              textAlignVertical="center"
-              style={{ paddingVertical: 12, paddingHorizontal: 16 }}
-              accessibilityLabel={accessibilityLabel ?? label}
-              accessibilityHint={fieldState.error?.message}
-              className={`min-h-[52px] rounded-[14px] border bg-surface px-4 py-3 text-base leading-5 text-ink ${fieldState.error ? 'border-tint-ink' : 'border-line'}`}
-            />
-            {fieldState.error ? (
-              <Text accessibilityLiveRegion="polite" className="text-sm leading-5 text-tint-ink">
-                {fieldState.error.message}
-              </Text>
-            ) : null}
-          </>
-        )}
-      />
-    </View>
-  );
 }
 
 export default function AccountScreen() {

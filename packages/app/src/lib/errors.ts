@@ -15,6 +15,7 @@ const COPY: Record<string, string> = {
   PATH_NOT_STARTED: 'Hãy bắt đầu lộ trình trước.',
   QUIZ_NOT_FOUND: 'Bài kiểm tra chưa có.',
   INVALID_ANSWERS: 'Hãy trả lời tất cả các câu.',
+  WRONG_PASSWORD: 'Mật khẩu không đúng.',
   INTERNAL: 'Có lỗi xảy ra. Thử lại nhé.',
 };
 
