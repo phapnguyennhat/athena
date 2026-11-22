@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import * as WebBrowser from 'expo-web-browser';
@@ -81,19 +82,32 @@ function Content({ lesson }: { lesson: Lesson }) {
         {current ? (
           <>
             <YouTubePlayer key={current.videoId} videoId={current.videoId} title={current.title} />
-            {lesson.videos.map((v, i) => (
-              <Pressable
-                key={v.videoId}
-                accessibilityRole="button"
-                accessibilityState={{ selected: i === video }}
-                onPress={() => setVideo(i)}
-                className={`gap-0.5 rounded-2xl border p-3 active:opacity-70 ${i === video ? 'border-tint' : 'border-line'} bg-surface`}>
-                <Text numberOfLines={2} className="text-[15px] font-semibold text-ink">
-                  {v.title}
-                </Text>
-                {v.channel ? <Text className="text-[13px] text-ink-muted">{v.channel}</Text> : null}
-              </Pressable>
-            ))}
+            {lesson.videos.length > 1 ? (
+              // Bleeds to the screen edges (parent has px-5) so cards scroll off-screen instead of clipping at the gutter.
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="-mx-5 grow-0" contentContainerClassName="gap-3 px-5">
+                {lesson.videos.map((v, i) => (
+                  <Pressable
+                    key={v.videoId}
+                    accessibilityRole="button"
+                    accessibilityLabel={v.title}
+                    accessibilityState={{ selected: i === video }}
+                    onPress={() => setVideo(i)}
+                    className={`w-56 overflow-hidden rounded-2xl border-2 bg-surface active:opacity-70 ${i === video ? 'border-tint' : 'border-line'}`}>
+                    <Image source={`https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`} style={{ width: '100%', aspectRatio: 16 / 9 }} contentFit="cover" />
+                    <View className="gap-0.5 p-2.5">
+                      <Text numberOfLines={2} className="text-[14px] font-semibold leading-5 text-ink">
+                        {v.title}
+                      </Text>
+                      {v.channel ? (
+                        <Text numberOfLines={1} className="text-[12px] text-ink-muted">
+                          {v.channel}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            ) : null}
           </>
         ) : (
           <Pressable
