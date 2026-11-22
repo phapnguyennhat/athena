@@ -24,8 +24,8 @@ describe('validateEnv', () => {
     expect(() => validateEnv(rest)).toThrow(/GEMINI_API_KEY/);
   });
 
-  it('defaults GEMINI_MODEL to gemini-2.5-flash', () => {
-    expect(validateEnv(base).GEMINI_MODEL).toBe('gemini-2.5-flash');
+  it('defaults GEMINI_MODEL to gemini-3.8-flash', () => {
+    expect(validateEnv(base).GEMINI_MODEL).toBe('gemini-3.8-flash');
   });
 
   it('requires RABBITMQ_URL', () => {

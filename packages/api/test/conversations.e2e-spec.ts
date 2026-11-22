@@ -83,16 +83,16 @@ describe('Conversations (e2e)', () => {
     const u = await newUser();
     const { id } = (await u.start()).body;
     const readies: boolean[] = [];
-    for (const text of ['SQL căn bản', 'Cơ bản', '30 phút', 'Làm báo cáo']) {
+    for (const text of ['SQL căn bản', 'Cơ bản', 'Làm báo cáo']) {
       const { body } = await u.send(id, text).expect(200);
       readies.push(body.ready);
     }
-    expect(readies).toEqual([false, false, false, true]);
+    expect(readies).toEqual([false, false, true]);
     const view = (await u.current()).body;
     expect(view.ready).toBe(true);
-    expect(view.preferences).toMatchObject({ topic: 'SQL căn bản', level: 'beginner', dailyMinutes: 30 });
+    expect(view.preferences).toMatchObject({ topic: 'SQL căn bản', level: 'beginner' });
     expect(view.messages.map((m: { role: string }) => m.role)).toEqual([
-      'assistant', 'user', 'assistant', 'user', 'assistant', 'user', 'assistant', 'user', 'assistant',
+      'assistant', 'user', 'assistant', 'user', 'assistant', 'user', 'assistant',
     ]);
   });
 

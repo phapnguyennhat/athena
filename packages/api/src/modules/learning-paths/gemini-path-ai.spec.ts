@@ -58,7 +58,7 @@ describe('GeminiPathAi', () => {
 
   it.each([undefined, ''])('empty text (%j) is AI_INVALID_OUTPUT', async (text) => {
     const { ai } = setup(async () => ({ text }));
-    await expect(ai.generate({ topic: 'SQL', level: 'beginner', dailyMinutes: 30 })).rejects.toMatchObject({
+    await expect(ai.generate({ topic: 'SQL', level: 'beginner' })).rejects.toMatchObject({
       code: 'AI_INVALID_OUTPUT',
       transient: false,
     });
@@ -103,7 +103,7 @@ describe('GeminiPathAi', () => {
 
   it('generate uses its config and returns validated output', async () => {
     const { ai, generateContent } = setup(async () => ({ text: JSON.stringify(pathJson) }));
-    expect((await ai.generate({ topic: 'SQL', level: 'beginner', dailyMinutes: 30 })).title).toBe('SQL');
+    expect((await ai.generate({ topic: 'SQL', level: 'beginner' })).title).toBe('SQL');
     expect((generateContent.mock.calls[0][0] as any).config).toMatchObject({
       systemInstruction: GENERATE_SYSTEM,
       temperature: 0.6,

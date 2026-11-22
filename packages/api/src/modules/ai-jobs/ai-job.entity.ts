@@ -14,7 +14,7 @@ export class AiJob {
   user?: User;
 
   @Column({ type: 'varchar', length: 32 })
-  type: 'generate_path';
+  type: 'generate_path' | 'generate_lesson' | 'generate_quiz';
 
   @Column({ type: 'varchar', length: 16, default: 'queued' })
   status: 'queued' | 'running' | 'succeeded' | 'failed';

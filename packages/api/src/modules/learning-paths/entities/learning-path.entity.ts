@@ -1,5 +1,6 @@
 import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, OneToMany, PrimaryGeneratedColumn, UpdateDateColumn, type Relation } from 'typeorm';
 import { User } from '../../users/user.entity.js';
+import type { Preferences } from '../dto/learning-path.dto.js';
 import { PathConversation } from './path-conversation.entity.js';
 import { PathModule } from './path-module.entity.js';
 
@@ -30,6 +31,14 @@ export class LearningPathEntity {
 
   @Column({ type: 'text' })
   summary: string;
+
+  /** The brief the path was generated from: lessons and quizzes are generated against it. */
+  @Column({ type: 'jsonb', default: () => `'{}'` })
+  preferences: Preferences;
+
+  /** ISO 639-1 code of the learner's input; every generated lesson and quiz uses it. */
+  @Column({ name: 'content_language', type: 'varchar', length: 16, default: 'vi' })
+  contentLanguage: string;
 
   @OneToMany(() => PathModule, (m) => m.path)
   modules: Relation<PathModule>[];

@@ -30,6 +30,17 @@ export class User {
   @Column({ name: 'email_verified_at', type: 'timestamptz', nullable: true })
   emailVerifiedAt: Date | null;
 
+  /** Maintained by StreakService; read through it, since a missed day only shows on the next activity. */
+  @Column({ name: 'current_streak', type: 'int', default: 0 })
+  currentStreak: number;
+
+  @Column({ name: 'longest_streak', type: 'int', default: 0 })
+  longestStreak: number;
+
+  /** Local date ('YYYY-MM-DD') of the last qualifying activity. */
+  @Column({ name: 'last_activity_date', type: 'date', nullable: true })
+  lastActivityDate: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;
 

@@ -25,6 +25,8 @@ export type ChatOutput = {
   offTopic: boolean;
 };
 export type PathOutput = {
+  /** ISO 639-1 code of the learner's input; lessons and quizzes are written in it. */
+  language: string;
   title: string;
   summary: string;
   modules: { title: string; lessons: { title: string }[] }[];
@@ -81,14 +83,20 @@ export function validateChatOutput(raw: unknown): ChatOutput {
   if (validateSync(dto, { whitelist: true }).length) throw invalid();
 
   // A bad preference field is dropped alone; the turn still counts.
-  const prefs = plainToInstance(PreferencesDto, isObject(rawPrefs) ? rawPrefs : {});
+  const prefs = plainToInstance(
+    PreferencesDto,
+    isObject(rawPrefs) ? rawPrefs : {},
+  );
   for (const e of validateSync(prefs, { whitelist: true }))
     delete (prefs as Record<string, unknown>)[e.property];
   return {
     reply: dto.reply,
     // Small overruns are repaired, not failed: drop bad chips, keep the first 4.
     quickReplies: dto.quickReplies
-      .filter((q): q is string => typeof q === 'string' && q.trim() !== '' && q.length <= 40)
+      .filter(
+        (q): q is string =>
+          typeof q === 'string' && q.trim() !== '' && q.length <= 40,
+      )
       .slice(0, 4),
     ready: dto.ready,
     offTopic: dto.offTopic,
@@ -102,7 +110,11 @@ export function validatePathOutput(raw: unknown): PathOutput {
   const dto = plainToInstance(PathOutDto, raw);
   if (!isObject(raw) || validateSync(dto, { whitelist: true }).length)
     throw invalid();
+  const lang =
+    typeof raw.language === 'string' ? raw.language.toLowerCase() : '';
   return {
+    // An unusable code is not worth failing a path over: fall back to the app language.
+    language: /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(lang) ? lang : 'vi',
     title: dto.title,
     summary: dto.summary,
     modules: dto.modules.map((m) => ({
@@ -116,5 +128,4 @@ export function validatePathOutput(raw: unknown): PathOutput {
 export const serverReady = (out: ChatOutput): boolean =>
   out.ready &&
   !!out.preferences.topic &&
-  !!out.preferences.level &&
-  !!out.preferences.dailyMinutes;
+  !!out.preferences.level;

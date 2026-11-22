@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, UseGuards } from '@nestjs/common';
 import { CurrentSession, CurrentUser, Public, type JwtClaims } from '@nestjs/authentication';
 import {
   ApiAcceptedResponse,
@@ -18,7 +18,9 @@ import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { SignInDto } from './dto/sign-in.dto.js';
 import { SignUpDto } from './dto/sign-up.dto.js';
 import { TokenPairDto } from './dto/token-pair.dto.js';
+import { UpdateMeDto } from './dto/update-me.dto.js';
 import { ResendVerificationDto, VerifyEmailDto } from './dto/verify-email.dto.js';
+import { UsersService } from '../users/users.service.js';
 
 const TOO_MANY_REQUESTS = { description: 'More than 10 requests a minute from this IP.' };
 
@@ -26,7 +28,10 @@ const TOO_MANY_REQUESTS = { description: 'More than 10 requests a minute from th
 @Controller('auth')
 @UseGuards(ThrottlerGuard)
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly users: UsersService,
+  ) {}
 
   /** Create an account and email a 6-digit verification code, to send to `POST /auth/verify-email`. */
   @Public()
@@ -109,5 +114,14 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Missing, invalid, expired or revoked access token.' })
   me(@CurrentUser() user: User): User {
     return user;
+  }
+
+  /** Update the profile: today only the timezone, which the app syncs from the device. */
+  @Patch('me')
+  @ApiBearerAuth()
+  @ApiBadRequestResponse({ description: 'Not an IANA timezone.' })
+  @ApiUnauthorizedResponse({ description: 'Missing, invalid, expired or revoked access token.' })
+  async updateMe(@CurrentUser() user: User, @Body() dto: UpdateMeDto): Promise<User> {
+    return this.users.updateTimezone(user.id, dto.timezone);
   }
 }

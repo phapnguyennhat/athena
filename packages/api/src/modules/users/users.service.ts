@@ -28,6 +28,11 @@ export class UsersService {
     return affected === 1;
   }
 
+  async updateTimezone(id: string, timezone: string): Promise<User> {
+    await this.users.update(id, { timezone });
+    return (await this.findById(id))!;
+  }
+
   /** Includes `passwordHash`, for sign-in only. */
   findByEmailWithPassword(email: string): Promise<User | null> {
     return this.users

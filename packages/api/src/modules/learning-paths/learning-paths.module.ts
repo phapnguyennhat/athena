@@ -19,7 +19,14 @@ import { PathAi } from './path-ai.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PathConversation, PathMessage, LearningPathEntity, PathModule, PathLesson, AiJob]),
+    TypeOrmModule.forFeature([
+      PathConversation,
+      PathMessage,
+      LearningPathEntity,
+      PathModule,
+      PathLesson,
+      AiJob,
+    ]),
     forwardRef(() => AiJobsModule),
   ],
   controllers: [LearningPathsController, ConversationsController],
@@ -31,9 +38,12 @@ import { PathAi } from './path-ai.js';
       provide: PathAi,
       inject: [ConfigService],
       useFactory: (c: ConfigService) =>
-        new GeminiPathAi(new GoogleGenAI({ apiKey: c.get('GEMINI_API_KEY') }), c.get('GEMINI_MODEL') ?? 'gemini-2.5-flash'),
+        new GeminiPathAi(
+          new GoogleGenAI({ apiKey: c.get('GEMINI_API_KEY') }),
+          c.get('GEMINI_MODEL') ?? 'gemini-3.8-flash',
+        ),
     },
   ],
-  exports: [GeneratePathHandler],
+  exports: [GeneratePathHandler, LearningPathsService, PathAi],
 })
 export class LearningPathsModule {}

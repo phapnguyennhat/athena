@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import type { Href } from 'expo-router';
 import { createContext, use, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
@@ -16,8 +17,10 @@ type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
 type AuthContextValue = {
   status: AuthStatus;
   session: Session | null;
+  /** True when the session ended because the refresh token was rejected (not a user sign-out). */
+  expired: boolean;
   setSession: (pair: TokenPair) => Promise<void>;
-  signOut: () => Promise<void>;
+  signOut: (opts?: { expired?: boolean }) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -50,9 +53,10 @@ async function writeItem(key: string, value: string | null) {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSessionState] = useState<Session | null>(null);
   const [status, setStatus] = useState<AuthStatus>('loading');
+  const [expired, setExpired] = useState(false);
   // Synchronous mirror so authFetch sees a rotated pair before React re-renders.
   const sessionRef = useRef<Session | null>(null);
-  const actions = useRef({ setSession: async (_: TokenPair) => {}, signOut: async () => {} });
+  const actions = useRef({ setSession: async (_: TokenPair) => {}, signOut: async (_?: { expired?: boolean }) => {} });
 
   useEffect(() => {
     let cancelled = false;
@@ -76,14 +80,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionRef.current = pair;
     await Promise.all([writeItem(ACCESS_KEY, pair.accessToken), writeItem(REFRESH_KEY, pair.refreshToken)]);
     setSessionState(pair);
+    setExpired(false);
     setStatus('signedIn');
   };
 
-  const signOut = async () => {
+  const signOut = async ({ expired: wasExpired = false }: { expired?: boolean } = {}) => {
     sessionRef.current = null;
     disconnectSocket();
     await Promise.all([writeItem(ACCESS_KEY, null), writeItem(REFRESH_KEY, null)]);
     setSessionState(null);
+    setExpired(wasExpired);
     setStatus('signedOut');
   };
 
@@ -92,13 +98,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     registerSession({
       get: () => sessionRef.current,
       save: (pair) => actions.current.setSession(pair),
-      signOut: () => actions.current.signOut(),
+      // Only a rejected refresh token signs out from here: that is an expired session, not a user action.
+      signOut: () => actions.current.signOut({ expired: true }),
     });
     return () => registerSession(null);
   });
 
   return (
-    <AuthContext.Provider value={{ status, session, setSession, signOut }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ status, session, expired, setSession, signOut }}>{children}</AuthContext.Provider>
   );
 }
 
@@ -106,6 +113,11 @@ export function useAuth() {
   const value = use(AuthContext);
   if (!value) throw new Error('useAuth must be used within AuthProvider');
   return value;
+}
+
+/** Where a signed-out user goes: straight to sign-in after an expired session, else the welcome screen. */
+export function useSignedOutHref(): Href {
+  return useAuth().expired ? { pathname: '/account', params: { mode: 'sign-in' } } : '/welcome';
 }
 
 /** @deprecated Prefer useAuth().status — kept for any sync call sites during migration. */
