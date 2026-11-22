@@ -18,8 +18,8 @@ page can filter by category and search by tag. The community page itself is out 
 ## Design
 - **Migration**: `categories(id uuid, slug varchar UNIQUE, name varchar, created_at)`, seeded with ~15
   Vietnamese categories incl. "Khác". `learning_paths.category_id uuid NULL FK → categories ON DELETE SET NULL`,
-  `learning_paths.tags text[] NOT NULL DEFAULT '{}'` with a GIN index. Existing paths: `category_id` set to
-  "Khác" in the migration (no LLM backfill).
+  `learning_paths.tags text[] NOT NULL DEFAULT '{}'` with a GIN index. Existing paths start with
+  `category_id NULL`; the backfill below fills active ones.
 - **AI call**: `PathAi.generate(prefs, categories: string[])` — `GeneratePathHandler` loads category names and
   passes them in. `GENERATE_SYSTEM` tells the model to pick one of them verbatim, or write a new short
   Vietnamese category only if none fits, plus 1–5 lowercase Vietnamese tags. `PATH_SCHEMA` gains
@@ -28,10 +28,16 @@ page can filter by category and search by tag. The community page itself is out 
   deduped, empties dropped. A bad category never fails the path (same as `language`).
 - **Matching**: `slug = lowercase, strip Vietnamese diacritics (đ→d), non-alnum → "-"`. Handler, inside the
   existing transaction: `INSERT … ON CONFLICT (slug) DO NOTHING`, then select by slug → `category_id`.
+- **Backfill**: `PathAi.categorize({title, summary, moduleTitles}, categories)` → `{category, tags}` (small
+  Gemini call, same validation + slug matching as generate). A one-off script
+  `src/scripts/backfill-categories.ts` (Nest application context, `npm run backfill:categories`) loops over
+  `status='active' AND category_id IS NULL` paths one at a time; re-runnable, a failed path is logged and
+  skipped. Drafts are not backfilled — they are replaced on regenerate or get categorized when generated anew.
 - **API**: path detail and list views include `category: { id, name } | null` and `tags`.
 - **Tests**: slug function, validator fallbacks, handler creates vs reuses a category.
 
 ## Calls I made (correct me)
-- Tags are Vietnamese regardless of the course's content language, so search works across languages.
-- Existing paths default to "Khác"; no backfill job.
+- Courses are Vietnamese only, so categories and tags are Vietnamese; no per-language handling.
+- Local DB cleanup done 2026-11-22: deleted 78 paths owned by `@example.com` e2e users (made by `FakePathAi`,
+  not the LLM). Remaining: 1 active, 1 draft. E2E tests write to the same local DB and will recreate such rows.
 - Seed list content is the builder's call (~15 broad subjects + "Khác").
