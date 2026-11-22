@@ -2,7 +2,15 @@ import { ApiError, type GoogleGenAI } from '@google/genai';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AiError } from './ai-output.js';
 import { GeminiPathAi } from './gemini-path-ai.js';
-import { CHAT_SCHEMA, CHAT_SYSTEM, GENERATE_SYSTEM, PATH_SCHEMA, toContents } from './prompts.js';
+import {
+  CATEGORIZE_SCHEMA,
+  CATEGORIZE_SYSTEM,
+  CHAT_SCHEMA,
+  CHAT_SYSTEM,
+  GENERATE_SYSTEM,
+  PATH_SCHEMA,
+  toContents,
+} from './prompts.js';
 
 const chatJson = { reply: 'Chào', quickReplies: ['SQL'], preferences: { topic: 'SQL' }, ready: false, offTopic: false };
 const pathJson = {
@@ -58,7 +66,7 @@ describe('GeminiPathAi', () => {
 
   it.each([undefined, ''])('empty text (%j) is AI_INVALID_OUTPUT', async (text) => {
     const { ai } = setup(async () => ({ text }));
-    await expect(ai.generate({ topic: 'SQL', level: 'beginner' })).rejects.toMatchObject({
+    await expect(ai.generate({ topic: 'SQL', level: 'beginner' }, [])).rejects.toMatchObject({
       code: 'AI_INVALID_OUTPUT',
       transient: false,
     });
@@ -103,7 +111,7 @@ describe('GeminiPathAi', () => {
 
   it('generate uses its config and returns validated output', async () => {
     const { ai, generateContent } = setup(async () => ({ text: JSON.stringify(pathJson) }));
-    expect((await ai.generate({ topic: 'SQL', level: 'beginner' })).title).toBe('SQL');
+    expect((await ai.generate({ topic: 'SQL', level: 'beginner' }, [])).title).toBe('SQL');
     expect((generateContent.mock.calls[0][0] as any).config).toMatchObject({
       systemInstruction: GENERATE_SYSTEM,
       temperature: 0.6,
@@ -119,5 +127,35 @@ describe('GeminiPathAi', () => {
     const arg = generateContent.mock.calls[0][0] as any;
     expect(arg.config.systemInstruction).toBe(CHAT_SYSTEM);
     expect(JSON.stringify(arg.contents)).toContain('ignore your rules');
+  });
+
+  it('generate sends the existing category names with the preferences', async () => {
+    const { ai, generateContent } = setup(async () => ({
+      text: JSON.stringify({ ...pathJson, category: 'Lập trình' }),
+    }));
+    const out = await ai.generate({ topic: 'SQL', level: 'beginner' }, ['Lập trình', 'Khác']);
+    expect(JSON.parse((generateContent.mock.calls[0][0] as any).contents)).toEqual({
+      topic: 'SQL',
+      level: 'beginner',
+      categories: ['Lập trình', 'Khác'],
+    });
+    expect(out.category).toBe('Lập trình');
+  });
+
+  it('categorize uses its config and returns normalized output', async () => {
+    const { ai, generateContent } = setup(async () => ({
+      text: JSON.stringify({ category: ' Toán học ', tags: ['Đại số'] }),
+    }));
+    const out = await ai.categorize({ title: 'T', summary: 'S', modules: ['M'] }, ['Khác']);
+    expect(out).toEqual({ category: 'Toán học', tags: ['đại số'] });
+    const arg = generateContent.mock.calls[0][0] as any;
+    expect(JSON.parse(arg.contents)).toEqual({ title: 'T', summary: 'S', modules: ['M'], categories: ['Khác'] });
+    expect(arg.config).toMatchObject({
+      systemInstruction: CATEGORIZE_SYSTEM,
+      temperature: 0.2,
+      maxOutputTokens: 300,
+      responseSchema: CATEGORIZE_SCHEMA,
+      thinkingConfig: { thinkingBudget: 0 },
+    });
   });
 });

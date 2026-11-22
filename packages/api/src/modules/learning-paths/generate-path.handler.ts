@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import type { AiJob } from '../ai-jobs/ai-job.entity.js';
 import { JobError, type JobHandler } from '../ai-jobs/job-handlers.js';
 import { validatePathOutput } from './ai-output.js';
+import { categoryNames } from './categories.js';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
 import { insertModules } from './learning-paths.service.js';
@@ -20,13 +21,11 @@ export class GeneratePathHandler implements JobHandler {
 
   async run(job: AiJob): Promise<string> {
     const conversationId = job.input.conversationId as string;
-    const conv = await this.ds
-      .getRepository(PathConversation)
-      .findOneBy({ id: conversationId, userId: job.userId });
+    const conv = await this.ds.getRepository(PathConversation).findOneBy({ id: conversationId, userId: job.userId });
     if (conv?.status !== 'open') throw new JobError('CONVERSATION_CLOSED');
 
     // Model call outside the transaction: never hold the row lock across it.
-    const out = validatePathOutput(await this.ai.generate(conv.preferences));
+    const out = validatePathOutput(await this.ai.generate(conv.preferences, await categoryNames(this.ds)));
 
     return this.ds.transaction(async (m) => {
       // Start-over or start may have closed the conversation while the model was working.
