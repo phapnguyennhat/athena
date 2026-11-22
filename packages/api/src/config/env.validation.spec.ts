@@ -16,6 +16,8 @@ const base = {
   MAIL_FROM: 'Athena <no-reply@example.com>',
   RABBITMQ_URL: 'amqp://u:p@localhost:5672',
   GEMINI_API_KEY: 'test-key',
+  AWS_REGION: 'us-east-1',
+  S3_BUCKET: 'athena',
 };
 
 describe('validateEnv', () => {

@@ -13,12 +13,14 @@ import { EventsModule } from './modules/events/events.module.js';
 import { LessonsModule } from './modules/lessons/lessons.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { StorageModule } from './storage/storage.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     DatabaseModule,
     RedisModule,
+    StorageModule,
     MailModule,
     UsersModule,
     AuthModule,

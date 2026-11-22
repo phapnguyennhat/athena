@@ -1,5 +1,5 @@
-// Needs Postgres and Redis from docker-compose.yml, migrated (`pnpm migration:run`).
-import { createHmac, randomUUID } from 'node:crypto';
+// Needs Postgres, Redis, Mailpit and LocalStack from docker-compose.yml, migrated (`pnpm migration:run`).
+import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
@@ -160,6 +160,29 @@ describe('Auth (e2e)', () => {
     });
     expect(res.body).not.toHaveProperty('passwordHash');
     await http.get('/auth/me').expect(401);
+  });
+
+  it('sets the avatar from a direct S3 upload and serves it through a signed URL', async () => {
+    const { body: tokens } = await signIn().expect(200);
+    const auth = `Bearer ${tokens.accessToken}`;
+    const setAvatar = (key: string) => http.put('/auth/me/avatar').set('Authorization', auth).send({ key });
+    const upload = async (body: Buffer) => {
+      const { body: ticket } = await http.post('/auth/me/avatar/upload-url').set('Authorization', auth).expect(200);
+      const headers = { 'Content-Type': 'image/jpeg' };
+      const put = await fetch(ticket.uploadUrl, { method: 'PUT', headers, body: new Uint8Array(body) });
+      expect(put.ok).toBe(true);
+      return setAvatar(ticket.key);
+    };
+    const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), randomBytes(64)]);
+
+    expect((await upload(Buffer.from('not an image'))).status).toBe(400);
+    await setAvatar(`avatars/${randomUUID()}/${randomUUID()}.jpg`).expect(400);
+    const { status, body } = await upload(jpeg);
+    expect(status).toBe(200);
+    expect(body).not.toHaveProperty('avatarKey');
+    const photo = await fetch(body.avatarUrl);
+    expect(Buffer.from(await photo.arrayBuffer())).toEqual(jpeg);
+    expect((await me(tokens.accessToken).expect(200)).body.avatarUrl).toMatch(/^http/);
   });
 
   it('accepts only HS256 access tokens it signed', async () => {

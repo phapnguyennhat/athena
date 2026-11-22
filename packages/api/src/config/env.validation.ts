@@ -100,6 +100,20 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   YOUTUBE_API_KEY?: string;
+
+  /** S3 bucket for user uploads (avatars). Credentials: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY. */
+  @IsString()
+  @IsNotEmpty()
+  AWS_REGION: string;
+
+  @IsString()
+  @IsNotEmpty()
+  S3_BUCKET: string;
+
+  /** LocalStack locally (`http://localhost:4566`); unset for AWS S3. */
+  @IsOptional()
+  @IsString()
+  S3_ENDPOINT?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

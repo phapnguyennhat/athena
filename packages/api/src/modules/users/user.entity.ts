@@ -26,6 +26,11 @@ export class User {
   @Column({ type: 'varchar', length: 64, default: 'UTC' })
   timezone: string;
 
+  /** S3 key of the profile photo; clients get it as a signed `avatarUrl`. */
+  @ApiHideProperty()
+  @Column({ name: 'avatar_key', type: 'varchar', length: 255, nullable: true })
+  avatarKey: string | null;
+
   /** Null until the user enters the emailed code; no tokens are issued before that. */
   @Column({ name: 'email_verified_at', type: 'timestamptz', nullable: true })
   emailVerifiedAt: Date | null;

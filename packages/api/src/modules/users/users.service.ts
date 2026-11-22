@@ -33,6 +33,10 @@ export class UsersService {
     return (await this.findById(id))!;
   }
 
+  async updateAvatarKey(id: string, avatarKey: string): Promise<void> {
+    await this.users.update(id, { avatarKey });
+  }
+
   /** Includes `passwordHash`, for sign-in only. */
   findByEmailWithPassword(email: string): Promise<User | null> {
     return this.users
