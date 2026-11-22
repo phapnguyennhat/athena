@@ -9,12 +9,16 @@ import { PathModule } from './entities/path-module.entity.js';
 
 export type LessonStatus = 'not_started' | 'in_progress' | 'completed';
 
+export type PathCategory = { id: string; name: string };
+
 /** The app's `LearningPath` shape, plus ids and the user's per-lesson status. */
 export type LearningPathView = {
   id: string;
   status: 'draft' | 'active';
   title: string;
   summary: string;
+  category: PathCategory | null;
+  tags: string[];
   progress: { done: number; total: number };
   modules: {
     id: string;
@@ -28,6 +32,8 @@ export type PathSummary = {
   id: string;
   title: string;
   summary: string;
+  category: PathCategory | null;
+  tags: string[];
   done: number;
   total: number;
   next: { id: string; title: string } | null;
@@ -40,15 +46,10 @@ const notFound = () =>
     code: 'PATH_NOT_FOUND',
     message: 'Learning path not found.',
   });
-const byPosition = (a: { position: number }, b: { position: number }) =>
-  a.position - b.position;
+const byPosition = (a: { position: number }, b: { position: number }) => a.position - b.position;
 
 /** Inserts modules and their lessons for a path, positions following array order. */
-export async function insertModules(
-  m: EntityManager,
-  pathId: string,
-  modules: LearningPath['modules'],
-): Promise<void> {
+export async function insertModules(m: EntityManager, pathId: string, modules: LearningPath['modules']): Promise<void> {
   const saved = await m.save(
     PathModule,
     modules.map((mod, i) => ({ pathId, position: i, title: mod.title })),
@@ -74,27 +75,24 @@ export class LearningPathsService {
   async get(userId: string, id: string): Promise<LearningPathView> {
     const path = await this.paths.findOne({
       where: { id, userId },
-      relations: { modules: { lessons: true } },
+      relations: { modules: { lessons: true }, category: true },
     });
     if (!path) throw notFound();
-    const rows: { lesson_id: string; status: LessonStatus }[] =
-      await this.ds.query(
-        `SELECT p.lesson_id, p.status FROM lesson_progress p
+    const rows: { lesson_id: string; status: LessonStatus }[] = await this.ds.query(
+      `SELECT p.lesson_id, p.status FROM lesson_progress p
        JOIN path_lessons l ON l.id = p.lesson_id JOIN path_modules m ON m.id = l.module_id
        WHERE p.user_id = $1 AND m.path_id = $2`,
-        [userId, id],
-      );
+      [userId, id],
+    );
     const status = new Map(rows.map((r) => [r.lesson_id, r.status]));
     const modules = [...path.modules].sort(byPosition).map((mod) => ({
       id: mod.id,
       title: mod.title,
-      lessons: [...mod.lessons]
-        .sort(byPosition)
-        .map((l) => ({
-          id: l.id,
-          title: l.title,
-          status: status.get(l.id) ?? 'not_started',
-        })),
+      lessons: [...mod.lessons].sort(byPosition).map((l) => ({
+        id: l.id,
+        title: l.title,
+        status: status.get(l.id) ?? 'not_started',
+      })),
     }));
     const lessons = modules.flatMap((m) => m.lessons);
     return {
@@ -102,6 +100,8 @@ export class LearningPathsService {
       status: path.status,
       title: path.title,
       summary: path.summary,
+      category: path.category ? { id: path.category.id, name: path.category.name } : null,
+      tags: path.tags,
       progress: {
         done: lessons.filter((l) => l.status === 'completed').length,
         total: lessons.length,
@@ -123,13 +123,15 @@ export class LearningPathsService {
          JOIN path_lessons l ON l.module_id = m.id
          LEFT JOIN lesson_progress pr ON pr.lesson_id = l.id AND pr.user_id = $1
          WHERE p.user_id = $1 AND p.status = 'active')
-       SELECT p.id, p.title, p.summary,
+       SELECT p.id, p.title, p.summary, p.tags,
+         CASE WHEN c.id IS NULL THEN NULL ELSE json_build_object('id', c.id, 'name', c.name) END AS category,
          (SELECT count(*) FROM l WHERE l.path_id = p.id)::int AS total,
          (SELECT count(*) FROM l WHERE l.path_id = p.id AND l.status = 'completed')::int AS done,
          (SELECT json_build_object('id', l.id, 'title', l.title) FROM l
             WHERE l.path_id = p.id AND l.status IS DISTINCT FROM 'completed' ORDER BY l.mp, l.lp LIMIT 1) AS next,
          GREATEST(p.updated_at, (SELECT max(l.updated_at) FROM l WHERE l.path_id = p.id)) AS "lastActiveAt"
-       FROM learning_paths p WHERE p.user_id = $1 AND p.status = 'active'
+       FROM learning_paths p LEFT JOIN categories c ON c.id = p.category_id
+       WHERE p.user_id = $1 AND p.status = 'active'
        ORDER BY "lastActiveAt" DESC`,
       [userId],
     );
@@ -146,11 +148,7 @@ export class LearningPathsService {
   }
 
   /** Accepts the reviewed draft: applies edits (draft only), activates it and closes its conversation. */
-  async start(
-    userId: string,
-    id: string,
-    modules?: LearningPath['modules'],
-  ): Promise<LearningPathView> {
+  async start(userId: string, id: string, modules?: LearningPath['modules']): Promise<LearningPathView> {
     await this.ds.transaction(async (m) => {
       // Lock order everywhere: conversation, then its paths (the generate handler and start-over do the same).
       const pre = await m.findOneBy(LearningPathEntity, { id, userId });

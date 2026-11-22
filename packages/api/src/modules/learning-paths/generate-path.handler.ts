@@ -3,7 +3,7 @@ import { DataSource } from 'typeorm';
 import type { AiJob } from '../ai-jobs/ai-job.entity.js';
 import { JobError, type JobHandler } from '../ai-jobs/job-handlers.js';
 import { validatePathOutput } from './ai-output.js';
-import { categoryNames } from './categories.js';
+import { categoryNames, resolveCategory } from './categories.js';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
 import { insertModules } from './learning-paths.service.js';
@@ -35,6 +35,7 @@ export class GeneratePathHandler implements JobHandler {
       });
       if (live?.status !== 'open') throw new JobError('CONVERSATION_CLOSED');
       await m.delete(LearningPathEntity, { conversationId, status: 'draft' });
+      const categoryId = await resolveCategory(m, out.category);
       const path = await m.save(
         m.create(LearningPathEntity, {
           userId: job.userId,
@@ -44,6 +45,8 @@ export class GeneratePathHandler implements JobHandler {
           summary: out.summary,
           preferences: live.preferences,
           contentLanguage: out.language,
+          categoryId,
+          tags: out.tags,
         }),
       );
       await insertModules(m, path.id, out.modules);

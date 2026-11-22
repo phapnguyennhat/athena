@@ -52,10 +52,14 @@ describe('Path generation (e2e)', () => {
     ds = app.get(DataSource);
   });
 
-  afterAll(() => app.close());
+  afterAll(async () => {
+    await ds.query(`DELETE FROM categories WHERE slug LIKE 'e2e-%'`);
+    await app.close();
+  });
   beforeEach(() => {
     ai.delayMs = 0;
     ai.nineModules = false;
+    ai.category = 'Lập Trình';
   });
 
   async function newUser() {
@@ -71,10 +75,12 @@ describe('Path generation (e2e)', () => {
     const u = {
       start: () => http.post('/learning-paths/conversations').set(auth),
       current: () => http.get('/learning-paths/conversations/current').set(auth),
-      send: (id: string, content: string) => http.post(`/learning-paths/conversations/${id}/messages`).set(auth).send({ content }),
+      send: (id: string, content: string) =>
+        http.post(`/learning-paths/conversations/${id}/messages`).set(auth).send({ content }),
       generate: (id: string) => http.post(`/learning-paths/conversations/${id}/generate`).set(auth),
       job: (id: string) => http.get(`/jobs/${id}`).set(auth),
       path: (id: string) => http.get(`/learning-paths/${id}`).set(auth),
+      list: () => http.get('/learning-paths').set(auth),
       startPath: (id: string, body: object = {}) => http.post(`/learning-paths/${id}/start`).set(auth).send(body),
       /** Polls the job until it leaves queued/running. */
       async settle(jobId: string, timeoutMs = 5000) {
@@ -116,7 +122,11 @@ describe('Path generation (e2e)', () => {
     expect(path).toMatchObject({ id: done.resultId, status: 'draft' });
     expect(path.modules.length).toBeGreaterThanOrEqual(3);
     expect(path.modules[0]).toEqual({ id: expect.any(String), title: 'Nền tảng', lessons: expect.any(Array) });
-    expect(path.modules[0].lessons[0]).toEqual({ id: expect.any(String), title: expect.stringContaining('(bài 1)'), status: 'not_started' });
+    expect(path.modules[0].lessons[0]).toEqual({
+      id: expect.any(String),
+      title: expect.stringContaining('(bài 1)'),
+      status: 'not_started',
+    });
     expect(path.progress).toEqual({ done: 0, total: 12 });
     expect((await u.current()).body).toMatchObject({ activeJob: null, draftPathId: done.resultId });
   });
@@ -173,7 +183,8 @@ describe('Path generation (e2e)', () => {
     const id = await u.readyConversation();
     ai.delayMs = 800;
     const jobId = (await u.generate(id).expect(202)).body.id;
-    for (let i = 0; i < 50 && (await u.job(jobId)).body.status !== 'running'; i++) await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 50 && (await u.job(jobId)).body.status !== 'running'; i++)
+      await new Promise((r) => setTimeout(r, 20));
     await new Promise((r) => setTimeout(r, 100));
     const fresh = (await u.start().expect(201)).body;
     expect(fresh.activeJob).toBeNull(); // the old conversation's job is still running here
@@ -188,5 +199,29 @@ describe('Path generation (e2e)', () => {
     await b.job(done.id).expect(404);
     await b.path(done.resultId).expect(404);
     await b.generate(id).expect(404);
+  });
+
+  it('saves the matching seeded category and the tags on the generated path', async () => {
+    const u = await newUser();
+    const done = await u.settle((await u.generate(await u.readyConversation()).expect(202)).body.id);
+    const { body: path } = await u.path(done.resultId).expect(200);
+    // The fake answers "Lập Trình": matched by slug, the seeded name is kept.
+    expect(path.category).toEqual({ id: expect.any(String), name: 'Lập trình' });
+    expect(path.tags).toEqual(['sql', 'cơ sở dữ liệu']);
+    await u.startPath(done.resultId).expect(200);
+    const { body: rows } = await u.list().expect(200);
+    expect(rows[0]).toMatchObject({ id: done.resultId, category: path.category, tags: path.tags });
+  });
+
+  it('creates a new category once and reuses it for later paths', async () => {
+    ai.category = `E2E Nấu ăn ${randomUUID()}`;
+    const ids: string[] = [];
+    for (const u of [await newUser(), await newUser()]) {
+      const done = await u.settle((await u.generate(await u.readyConversation()).expect(202)).body.id);
+      const { body } = await u.path(done.resultId).expect(200);
+      expect(body.category.name).toBe(ai.category);
+      ids.push(body.category.id);
+    }
+    expect(ids[0]).toBe(ids[1]);
   });
 });
