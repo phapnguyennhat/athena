@@ -82,7 +82,7 @@ describe('Events gateway (e2e)', () => {
     const { id } = (await http.post('/learning-paths/conversations').set(auth).expect(201)).body;
     await ds
       .getRepository(PathConversation)
-      .update(id, { ready: true, preferences: { topic: 'SQL căn bản', level: 'beginner', dailyMinutes: 30 } });
+      .update(id, { ready: true, preferences: { topic: 'SQL căn bản', level: 'beginner' } });
     return (await http.post(`/learning-paths/conversations/${id}/generate`).set(auth).expect(202)).body as { id: string };
   }
 

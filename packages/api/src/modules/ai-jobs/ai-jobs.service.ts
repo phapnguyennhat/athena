@@ -41,8 +41,11 @@ export class AiJobsService implements OnApplicationBootstrap, OnModuleDestroy {
     @Inject(JOB_HANDLERS) private readonly handlers: JobHandler[],
   ) {}
 
-  /** Idempotent per conversation: while a job for it is queued/running, that job is returned. */
-  async enqueue(userId: string, type: AiJob['type'], input: { conversationId: string } & Record<string, unknown>): Promise<AiJob> {
+  /**
+   * Idempotent per target (the conversation for generate_path, the lesson for lesson/quiz jobs): while a job of this
+   * type for it is queued/running, that job is returned. Backed by partial unique indexes on `ai_jobs`.
+   */
+  async enqueue(userId: string, type: AiJob['type'], input: { conversationId: string } | { lessonId: string }): Promise<AiJob> {
     let job: AiJob | undefined;
     // Two tries: the active job that blocked the insert may finish before we read it.
     for (let i = 0; i < 2 && !job; i++) {
@@ -50,13 +53,18 @@ export class AiJobsService implements OnApplicationBootstrap, OnModuleDestroy {
         job = await this.jobs.save(this.jobs.create({ userId, type, input }));
       } catch (e) {
         if ((e as { driverError?: { code?: string } }).driverError?.code !== '23505') throw e;
-        const active = await this.jobs.findOne({ where: { type, status: ACTIVE, input: JsonContains({ conversationId: input.conversationId }) } });
+        const active = await this.jobs.findOne({ where: { type, status: ACTIVE, input: JsonContains(input) } });
         if (active) return active;
       }
     }
     if (!job) throw new Error('could not enqueue job');
     await this.publish(job);
     return job;
+  }
+
+  /** The newest job of this type for a lesson: the app shows its status (generating / failed + retry). */
+  latestForLesson(userId: string, type: AiJob['type'], lessonId: string): Promise<AiJob | null> {
+    return this.jobs.findOne({ where: { userId, type, input: JsonContains({ lessonId }) }, order: { createdAt: 'DESC' } });
   }
 
   async findForUser(userId: string, id: string): Promise<AiJob> {

@@ -4,14 +4,11 @@ import {
   ArrayMinSize,
   IsArray,
   IsIn,
-  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   Length,
-  Max,
   MaxLength,
-  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -23,7 +20,6 @@ export class PreferencesDto {
   @IsOptional() @IsString() @IsNotEmpty() @MaxLength(200) topic?: string;
   @IsOptional() @IsIn(LEVELS) level?: Level;
   @IsOptional() @IsString() @IsNotEmpty() @MaxLength(300) goal?: string;
-  @IsOptional() @IsInt() @Min(5) @Max(240) dailyMinutes?: number;
 }
 
 /** Plain-type view of `PreferencesDto` for entities and services. */

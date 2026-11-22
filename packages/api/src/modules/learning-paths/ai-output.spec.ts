@@ -9,7 +9,7 @@ import {
 const chat = (over: Record<string, unknown> = {}) => ({
   reply: 'Xin chào',
   quickReplies: [],
-  preferences: { topic: 'SQL', level: 'beginner', dailyMinutes: 30 },
+  preferences: { topic: 'SQL', level: 'beginner' },
   ready: true,
   offTopic: false,
   ...over,
@@ -28,13 +28,14 @@ const code = (fn: () => unknown) => {
 };
 
 describe('serverReady', () => {
-  it('is false when the model says ready but dailyMinutes is missing', () => {
-    const out = validateChatOutput(
-      chat({ preferences: { topic: 'SQL', level: 'beginner' } }),
-    );
+  it('is false when the model says ready but the level is missing', () => {
+    const out = validateChatOutput(chat({ preferences: { topic: 'SQL' } }));
     expect(serverReady(out)).toBe(false);
   });
-  it('is true when everything is present', () => {
+  it('drops a daily-minutes field the model may still send', () => {
+    expect(validateChatOutput(chat({ preferences: { topic: 'SQL', level: 'beginner', dailyMinutes: 30 } })).preferences).toEqual({ topic: 'SQL', level: 'beginner' });
+  });
+  it('is true when topic and level are present', () => {
     expect(serverReady(validateChatOutput(chat()))).toBe(true);
   });
 });

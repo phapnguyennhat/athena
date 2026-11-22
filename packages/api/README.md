@@ -58,8 +58,8 @@ Environment variables are read from `.env` (never commit it).
 | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | required by `docker compose` | Credentials the local RabbitMQ container is created with; must match `RABBITMQ_URL` |
 | `RABBITMQ_PORT`, `RABBITMQ_UI_PORT` | optional | Host ports of the local RabbitMQ container, default `5672` and `15672` (management UI at http://localhost:15672) |
 | `GEMINI_API_KEY` | required | Gemini API key; server-side only |
-| `GEMINI_MODEL` | optional | Gemini model, default `gemini-2.5-flash` |
-| YouTube Data API key | planned | Resource discovery; server-side only |
+| `GEMINI_MODEL` | optional | Gemini model, default `gemini-3.8-flash` |
+| `YOUTUBE_API_KEY` | optional | YouTube Data API v3 key; server-side only. Set: each lesson stores up to 3 verified, embeddable videos (one `search.list` ≈ 100 quota units, once per lesson). Unset: the app links to a YouTube search instead |
 
 AI and YouTube keys must never be shipped to the mobile client.
 
@@ -82,8 +82,22 @@ Every route needs a bearer access token and only touches the current user's reso
 | `POST` | `/learning-paths/conversations/:id/messages` | One chat turn with the AI (20 a minute) |
 | `POST` | `/learning-paths/conversations/:id/generate` | Queue path generation (202, returns the job; idempotent while a job is active; 5 an hour) |
 | `GET` | `/jobs/:id` | Status of an AI job; `resultId` is the draft path once it succeeded |
-| `GET` | `/learning-paths/:id` | A path with its modules and lessons |
+| `GET` | `/learning-paths` | Active paths with progress and the next lesson, most recently studied first |
+| `GET` | `/learning-paths/:id` | A path with its modules, lessons (ids and the user's status) and progress |
 | `POST` | `/learning-paths/:id/start` | Accept the (optionally edited) draft: it becomes active and the conversation closes |
+| `DELETE` | `/learning-paths/:id` | Delete a path with its lessons, quizzes, attempts and progress (204). Learning days and the streak stay |
+| `GET` | `/lessons/:id` | Lesson content, videos, quiz summary and job states. Opening it marks it in progress |
+| `POST` | `/lessons/:id/generate-content` | Queue lesson generation (202, job). Stored content is never regenerated |
+| `POST` | `/lessons/:id/complete` | Mark completed (idempotent). Records the learning day; returns path progress and streak |
+| `POST` | `/lessons/:id/quiz/generate` | Queue the lesson's quiz (202, job), built from its stored content. 409 `LESSON_NOT_READY` without content |
+| `GET` | `/lessons/:id/quiz` | The quiz without answers (404 `QUIZ_NOT_FOUND` before it is generated) |
+| `POST` | `/quizzes/:id/attempts` | Submit `{ answers: number[] }`: graded on the server, returns explanations; every attempt is kept and counts as a learning day |
+| `GET` | `/dashboard` | Streak (current, longest, today, Mon–Sun week in the user's timezone), continue-learning target, paths, totals |
+| `PATCH` | `/auth/me` | Update `{ timezone }` (IANA). Past learning days keep their date |
+
+Job types on `ai.jobs`: `generate_path`, `generate_lesson`, `generate_quiz`; a lesson has at most one active job per type. Content language is detected when the path is generated (`learning_paths.content_language`) and used for every lesson and quiz.
+
+**Streak rule:** a learning day is a completed lesson or a submitted quiz attempt, dated in the user's timezone at the time (`daily_activity`, one row per user and day). The streak grows by one per new day and restarts at 1 after a missed day; reads show 0 once a day has been missed.
 
 **Live job status:** a socket.io namespace at `/events` (websocket transport only). Pass the access token as `auth: { token }` in the handshake; an invalid token gets `auth_error` and is disconnected. The server emits `job.updated` with `{ jobId, type, status, resultId, errorCode }` whenever one of the user's jobs changes, so the app need not poll `/jobs/:id`.
 
@@ -158,6 +172,9 @@ npx -y @mermaid-js/mermaid-cli -i docs/database.mmd -o docs/database.png -b whit
 - Rate-limit AI endpoints and consider per-user quotas.
 - Log generation start, completion and failure with request IDs, latency and token usage. Never log keys, tokens or unnecessary user content.
 - Test the business rules, especially timezone and streak edge cases: midnight, timezone changes, missed days, concurrent and retried requests.
+
+e2e suites share one RabbitMQ queue: if a dev server (`pnpm start:dev`) is running, it consumes the tests' jobs. Run them on their own vhost instead:
+`docker compose exec rabbitmq rabbitmqctl add_vhost e2e && docker compose exec rabbitmq rabbitmqctl set_permissions -p e2e "$RABBITMQ_USER" ".*" ".*" ".*"`, then `RABBITMQ_URL=amqp://athena:athena@localhost:5672/e2e pnpm test:e2e`.
 
 ## Roadmap
 

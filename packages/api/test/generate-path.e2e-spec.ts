@@ -91,7 +91,7 @@ describe('Path generation (e2e)', () => {
         const { id } = (await u.start().expect(201)).body;
         await ds
           .getRepository(PathConversation)
-          .update(id, { ready: true, preferences: { topic: 'SQL căn bản', level: 'beginner', dailyMinutes: 30 } });
+          .update(id, { ready: true, preferences: { topic: 'SQL căn bản', level: 'beginner' } });
         return id;
       },
     };
@@ -115,8 +115,9 @@ describe('Path generation (e2e)', () => {
     const { body: path } = await u.path(done.resultId).expect(200);
     expect(path).toMatchObject({ id: done.resultId, status: 'draft' });
     expect(path.modules.length).toBeGreaterThanOrEqual(3);
-    expect(path.modules[0]).toEqual({ title: 'Nền tảng', lessons: expect.any(Array) });
-    expect(path.modules[0].lessons[0]).toEqual({ title: expect.stringContaining('(bài 1)') });
+    expect(path.modules[0]).toEqual({ id: expect.any(String), title: 'Nền tảng', lessons: expect.any(Array) });
+    expect(path.modules[0].lessons[0]).toEqual({ id: expect.any(String), title: expect.stringContaining('(bài 1)'), status: 'not_started' });
+    expect(path.progress).toEqual({ done: 0, total: 12 });
     expect((await u.current()).body).toMatchObject({ activeJob: null, draftPathId: done.resultId });
   });
 

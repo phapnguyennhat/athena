@@ -90,11 +90,16 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsNotEmpty()
-  GEMINI_MODEL: string = 'gemini-2.5-flash';
+  GEMINI_MODEL: string = 'gemini-3.8-flash';
 
   @IsString()
   @IsNotEmpty()
   RABBITMQ_URL: string;
+
+  /** YouTube Data API v3 key, server-side only. Unset: lessons offer a YouTube search link instead of videos. */
+  @IsOptional()
+  @IsString()
+  YOUTUBE_API_KEY?: string;
 }
 
 export function validateEnv(config: Record<string, unknown>): EnvironmentVariables {

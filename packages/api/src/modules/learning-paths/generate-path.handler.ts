@@ -20,7 +20,9 @@ export class GeneratePathHandler implements JobHandler {
 
   async run(job: AiJob): Promise<string> {
     const conversationId = job.input.conversationId as string;
-    const conv = await this.ds.getRepository(PathConversation).findOneBy({ id: conversationId, userId: job.userId });
+    const conv = await this.ds
+      .getRepository(PathConversation)
+      .findOneBy({ id: conversationId, userId: job.userId });
     if (conv?.status !== 'open') throw new JobError('CONVERSATION_CLOSED');
 
     // Model call outside the transaction: never hold the row lock across it.
@@ -28,11 +30,22 @@ export class GeneratePathHandler implements JobHandler {
 
     return this.ds.transaction(async (m) => {
       // Start-over or start may have closed the conversation while the model was working.
-      const live = await m.findOne(PathConversation, { where: { id: conversationId }, lock: { mode: 'pessimistic_write' } });
+      const live = await m.findOne(PathConversation, {
+        where: { id: conversationId },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (live?.status !== 'open') throw new JobError('CONVERSATION_CLOSED');
       await m.delete(LearningPathEntity, { conversationId, status: 'draft' });
       const path = await m.save(
-        m.create(LearningPathEntity, { userId: job.userId, conversationId, status: 'draft', title: out.title, summary: out.summary }),
+        m.create(LearningPathEntity, {
+          userId: job.userId,
+          conversationId,
+          status: 'draft',
+          title: out.title,
+          summary: out.summary,
+          preferences: live.preferences,
+          contentLanguage: out.language,
+        }),
       );
       await insertModules(m, path.id, out.modules);
       return path.id;
