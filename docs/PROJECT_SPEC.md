@@ -94,7 +94,7 @@ A user should be able to:
 Do not implement these unless the project owner approves a scope change:
 
 -   Admin-managed course authoring or an admin content-upload portal.
--   Public course catalog or course marketplace.
+-   ~~Public course catalog or course marketplace.~~ Approved 2026-11-22, see community design (`docs/superpowers/specs/2026-11-22-community-courses-design.md`).
 -   Social feed, following, comments, or direct messaging.
 -   Leaderboards and competitive rankings.
 -   Paid subscriptions, payments, or in-app purchases.
