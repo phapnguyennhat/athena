@@ -153,6 +153,20 @@ describe('Typesense index of community courses (e2e)', { timeout: 30_000 }, () =
     expect(ids).toEqual([id]);
   });
 
+  it('re-indexes the source when a copy is deleted over HTTP', async () => {
+    const [a, b] = [await newUser(), await newUser()];
+    const src = await makePath(a.id);
+    const { id: copy } = await community.copy(b.id, src);
+    const indexed = app.get<Client>(TYPESENSE).collections(COLLECTION).documents(src);
+    const copies = async () => ((await indexed.retrieve()) as { copies: number }).copies;
+    await search.sync(src);
+    expect(await copies()).toBe(1);
+    await http.delete(`/learning-paths/${copy}`).set(b.auth).expect(204);
+    const until = Date.now() + 5000;
+    while (Date.now() < until && (await copies()) !== 0) await new Promise((r) => setTimeout(r, 200));
+    expect(await copies()).toBe(0);
+  });
+
   it('reindexAll indexes every public path and drops stale documents', async () => {
     const ts = app.get<Client>(TYPESENSE);
     await ts
@@ -173,7 +187,17 @@ describe('Typesense index of community courses (e2e)', { timeout: 30_000 }, () =
     const [{ n }] = await ds.query(
       `SELECT count(*)::int AS n FROM learning_paths p WHERE p.status = 'active' AND p.source_path_id IS NULL`,
     );
-    expect(await search.reindexAll()).toBe(n);
+    // A listed document that a consumer deleted meanwhile must not abort the rebuild.
+    const proto = Object.getPrototypeOf(ts.collections(COLLECTION).documents()) as { export: () => Promise<string> };
+    const real = proto.export;
+    const spy = vi.spyOn(proto, 'export').mockImplementation(async function (this: unknown, ...args: unknown[]) {
+      return `${await real.apply(this, args as [])}\n{"id":"${randomUUID()}"}`;
+    });
+    try {
+      expect(await search.reindexAll()).toBe(n);
+    } finally {
+      spy.mockRestore();
+    }
     expect((await search.search({ tag: `stale-${run}`, limit: 10 })).ids).toEqual([]);
   });
 });

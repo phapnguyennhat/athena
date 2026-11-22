@@ -187,15 +187,19 @@ export class LearningPathsService {
    * with its modules, lessons, progress and the content no other lesson uses. Learning days stay.
    */
   async remove(userId: string, id: string): Promise<void> {
-    const affected = await this.ds.transaction(async (m) => {
+    const { affected, sourcePathId } = await this.ds.transaction(async (m) => {
       const hidden = await m.update(
         LearningPathEntity,
         { id, userId, status: 'active', sourcePathId: IsNull(), hiddenAt: IsNull() },
         { hiddenAt: () => 'now()' },
       );
-      return hidden.affected || deletePaths(m, { id, userId, hiddenAt: IsNull() });
+      if (hidden.affected) return { affected: hidden.affected, sourcePathId: null };
+      const path = await m.findOneBy(LearningPathEntity, { id, userId, hiddenAt: IsNull() });
+      return { affected: await deletePaths(m, { id, userId, hiddenAt: IsNull() }), sourcePathId: path?.sourcePathId };
     });
     if (!affected) throw notFound();
+    // The source's `copies` dropped.
+    if (sourcePathId) await this.search.publish(sourcePathId);
   }
 
   /** Accepts the reviewed draft: applies edits (draft only), activates it and closes its conversation. */

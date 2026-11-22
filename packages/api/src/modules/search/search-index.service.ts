@@ -103,7 +103,15 @@ export class SearchIndexService implements OnApplicationBootstrap {
     const indexed = (await this.documents().export({ include_fields: 'id' })).split('\n').filter(Boolean);
     for (const line of indexed) {
       const { id } = JSON.parse(line) as { id: string };
-      if (!live.has(id)) await this.ts.collections(this.name).documents(id).delete();
+      if (live.has(id)) continue;
+      // A consumer may delete it meanwhile.
+      await this.ts
+        .collections(this.name)
+        .documents(id)
+        .delete()
+        .catch((e: unknown) => {
+          if (!(e instanceof Errors.ObjectNotFound)) throw e;
+        });
     }
     return docs.length;
   }
