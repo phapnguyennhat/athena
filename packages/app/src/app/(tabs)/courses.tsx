@@ -56,7 +56,6 @@ export default function CoursesScreen() {
             {data.map((p) => (
               <PathRow key={p.id} path={p} onPress={() => router.push(`/paths/${p.id}`)} onLongPress={() => remove(p)} />
             ))}
-            <Text className="mt-1 text-center text-[13px] text-ink-muted">Nhấn giữ một lộ trình để xoá.</Text>
           </>
         )}
       </ScrollView>
