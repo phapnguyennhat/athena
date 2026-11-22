@@ -3,9 +3,10 @@ import { DataSource } from 'typeorm';
 import type { AiJob } from '../ai-jobs/ai-job.entity.js';
 import { JobError, type JobHandler } from '../ai-jobs/job-handlers.js';
 import { PathAi } from '../learning-paths/path-ai.js';
+import { claimOrWait, releaseClaim } from './content-claim.js';
 import { LessonContentEntity } from './entities/lesson-content.entity.js';
 import { LessonResource } from './entities/lesson-resource.entity.js';
-import { findOwnedLesson } from './lessons.service.js';
+import { findOwnedLesson, type OwnedLesson } from './lessons.service.js';
 import { YouTubeService } from './youtube.service.js';
 
 /** Generates a lesson's content once, then looks up verified videos for it. Returns the lesson id. */
@@ -25,14 +26,29 @@ export class GenerateLessonHandler implements JobHandler {
     const owned = await findOwnedLesson(this.ds.manager, job.userId, lessonId);
     // The path was deleted while the job waited: nothing to write to.
     if (!owned) throw new JobError('LESSON_NOT_FOUND');
-    const { lesson, content: row, path, moduleTitle, ordered } = owned;
-    if (row.content) return lesson.id;
+    const { lesson, content: row } = owned;
+    const ready = async () => {
+      const live = await this.ds.getRepository(LessonContentEntity).findOneBy({ id: row.id });
+      if (!live) throw new JobError('LESSON_NOT_FOUND');
+      return !!live.content;
+    };
+    if ((await claimOrWait(this.ds, row.id, 'generating_since', ready)) === 'ready') return lesson.id;
 
+    try {
+      return await this.generate(owned);
+    } catch (e) {
+      // Free the row so a retry or another learner can claim it.
+      await releaseClaim(this.ds, row.id, 'generating_since');
+      throw e;
+    }
+  }
+
+  private async generate({ lesson, content: row, path, moduleTitle, ordered }: OwnedLesson): Promise<string> {
+    const lessonId = lesson.id;
     const i = ordered.findIndex((l) => l.id === lesson.id);
     const out = await this.ai.lesson({
       language: path.contentLanguage,
       level: path.preferences.level,
-      goal: path.preferences.goal,
       pathTitle: path.title,
       moduleTitle,
       lessonTitle: lesson.title,
@@ -50,11 +66,12 @@ export class GenerateLessonHandler implements JobHandler {
         lock: { mode: 'pessimistic_write' },
       });
       if (!live) throw new JobError('LESSON_NOT_FOUND');
-      if (live.content) return lessonId; // a concurrent run won; keep its content
+      if (live.content) return lessonId; // a run that took over our stale claim won; keep its content
       await m.update(LessonContentEntity, row.id, {
         content,
         searchKeywords: keywords,
         generatedAt: new Date(),
+        generatingSince: null,
       });
       if (videos.length)
         await m.insert(
