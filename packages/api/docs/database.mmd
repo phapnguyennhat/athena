@@ -1,5 +1,6 @@
 erDiagram
     users ||--o{ learning_paths : owns
+    categories ||--o{ learning_paths : classifies
     users ||--o| user_learning_stats : has
     users ||--o{ daily_activities : logs
     users ||--o{ lesson_progress : tracks
@@ -25,6 +26,13 @@ erDiagram
         timestamptz updated_at
     }
 
+    categories {
+        uuid id PK
+        varchar slug UK "diacritic-free match key"
+        varchar name "Vietnamese"
+        timestamptz created_at
+    }
+
     learning_paths {
         uuid id PK
         uuid user_id FK "idx (user_id, updated_at)"
@@ -35,6 +43,8 @@ erDiagram
         text learning_goal "nullable"
         smallint study_hours_per_week "nullable"
         varchar content_language "language of the user's input when creating the path"
+        uuid category_id FK "nullable, idx; set by the LLM"
+        text_array tags "lowercase Vietnamese keywords, GIN idx"
         enum status "draft | active | completed | archived"
         enum generation_status "pending | processing | completed | failed"
         varchar generation_error "user-safe message, nullable"

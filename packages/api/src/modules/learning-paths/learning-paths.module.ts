@@ -6,6 +6,7 @@ import { AiJob } from '../ai-jobs/ai-job.entity.js';
 import { AiJobsModule } from '../ai-jobs/ai-jobs.module.js';
 import { ConversationsController } from './conversations.controller.js';
 import { ConversationsService } from './conversations.service.js';
+import { Category } from './entities/category.entity.js';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathLesson } from './entities/path-lesson.entity.js';
@@ -26,6 +27,7 @@ import { PathAi } from './path-ai.js';
       PathModule,
       PathLesson,
       AiJob,
+      Category,
     ]),
     forwardRef(() => AiJobsModule),
   ],
