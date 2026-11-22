@@ -1,27 +1,28 @@
+import { useRouter } from 'expo-router';
+import { RefreshControl } from 'react-native';
+import { HomeSkeleton } from '@/components/skeleton';
+
 import { BrandMark } from '@/components/brand-mark';
-import {
-  CommunityRail,
-  ContinueSection,
-  StreakCard,
-  type CommunityCourse,
-} from '@/components/home-sections';
-import { ACTIVE } from '@/lib/sample-courses';
+import { ContinueSection, StreakCard } from '@/components/home-sections';
+import { Retry } from '@/components/retry';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { SafeAreaView, ScrollView, Text, View } from '@/tw';
+import { useLoad } from '@/hooks/use-load';
+import { getDashboard } from '@/lib/learning-api';
+import { Pressable, SafeAreaView, ScrollView, Text, View } from '@/tw';
 
-// shortcut: static sample data, replace with API (progress, streak, community feed) once those endpoints exist.
-const STREAK = { days: 5, week: [true, true, true, true, true, false, false], today: 4 };
-
-const COMMUNITY: CommunityCourse[] = [
-  { id: 'c1', title: 'Ngữ pháp tiếng Anh: thì hiện tại', author: 'minh.anh', level: 'Cơ bản', lessons: 8, cover: 'EN' },
-  { id: 'c2', title: 'Học máy qua ví dụ', author: 'tuan.ml', level: 'Trung cấp', lessons: 14, cover: 'ML' },
-  { id: 'c3', title: 'Quản lý tài chính cá nhân', author: 'lan.pham', level: 'Cơ bản', lessons: 6, cover: 'TC' },
-];
+/** Index of a local 'YYYY-MM-DD' in a Mon–Sun week (0 = Monday). */
+const weekday = (date: string) => (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
 
 export default function HomeScreen() {
+  const router = useRouter();
+  const { data, error, reload, refreshing, refresh } = useLoad(getDashboard);
+
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
-      <ScrollView contentContainerClassName="gap-7 pb-32" showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerClassName="gap-7 pb-32"
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
         <View className="mr-2 ml-5 flex-row items-center justify-between">
           <BrandMark />
           <ThemeToggle />
@@ -30,10 +31,48 @@ export default function HomeScreen() {
           <Text accessibilityRole="header" className="text-[30px] leading-9 font-black tracking-[-0.5px] text-ink">
             Chào bạn, học tiếp nào.
           </Text>
-          <StreakCard {...STREAK} />
-          <ContinueSection courses={ACTIVE} />
+          {!data ? (
+            error ? (
+              <Retry onPress={reload} />
+            ) : (
+              <HomeSkeleton />
+            )
+          ) : (
+            <>
+              <StreakCard
+                days={data.streak.current}
+                week={data.streak.week}
+                today={weekday(data.streak.today)}
+                studiedToday={data.streak.learnedToday}
+              />
+              {data.paths.length === 0 ? (
+                <View className="gap-3 rounded-3xl border border-line bg-surface p-5">
+                  <Text className="text-[20px] leading-7 font-extrabold text-ink">Bắt đầu lộ trình đầu tiên</Text>
+                  <Text className="text-[15px] leading-[22px] text-ink-muted">
+                    Kể cho AI bạn muốn học gì, AI sẽ soạn lộ trình theo trình độ và thời gian của bạn.
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.push('/new-path')}
+                    className="min-h-12 items-center justify-center rounded-[24px] bg-tint ios:active:opacity-80">
+                    <Text className="text-base font-bold text-on-tint">Tạo lộ trình</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <ContinueSection
+                  target={data.continue}
+                  paths={data.paths}
+                  onLesson={(id) => router.push(`/lessons/${id}`)}
+                  onPath={(id) => router.push(`/paths/${id}`)}
+                />
+              )}
+              <Text className="text-[13px] leading-5 text-ink-muted">
+                Đã học {data.totals.completedLessons} bài · {data.totals.quizAttempts} lần làm bài kiểm tra · Kỷ lục{' '}
+                {data.streak.longest} ngày
+              </Text>
+            </>
+          )}
         </View>
-        <CommunityRail courses={COMMUNITY} />
       </ScrollView>
     </SafeAreaView>
   );

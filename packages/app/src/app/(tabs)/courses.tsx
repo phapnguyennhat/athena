@@ -1,32 +1,64 @@
-import { ProgressBar } from '@/components/home-sections';
-import { ACTIVE } from '@/lib/sample-courses';
+import { useRouter } from 'expo-router';
+import { Alert, RefreshControl } from 'react-native';
+import { PathListSkeleton } from '@/components/skeleton';
+
+import { PathRow } from '@/components/home-sections';
+import { Retry } from '@/components/retry';
+import { toast } from '@/components/toast';
+import { useLoad } from '@/hooks/use-load';
+import { deletePath, listPaths, type PathSummary } from '@/lib/learning-api';
 import { Pressable, SafeAreaView, ScrollView, Text } from '@/tw';
 
 export default function CoursesScreen() {
+  const router = useRouter();
+  const { data, setData, error, reload, refreshing, refresh } = useLoad(listPaths);
+
+  const remove = (p: PathSummary) =>
+    Alert.alert('Xoá lộ trình?', `"${p.title}" cùng bài học, bài kiểm tra và tiến độ sẽ bị xoá. Chuỗi ngày học vẫn giữ nguyên.`, [
+      { text: 'Huỷ', style: 'cancel' },
+      {
+        text: 'Xoá',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deletePath(p.id);
+            setData((list) => list?.filter((x) => x.id !== p.id) ?? null);
+            toast.info('Đã xoá lộ trình.');
+          } catch (e) {
+            toast.fromError(e);
+          }
+        },
+      },
+    ]);
+
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
-      <ScrollView contentContainerClassName="gap-3 px-5 pt-4 pb-32">
+      <ScrollView
+        contentContainerClassName="gap-3 px-5 pt-4 pb-32"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
         <Text accessibilityRole="header" className="mb-2 text-[30px] leading-9 font-black tracking-[-0.5px] text-ink">
           Khoá học của tôi
         </Text>
-        {ACTIVE.length === 0 ? (
-          <Text className="text-[15px] leading-[22px] text-ink-muted">
-            Bạn chưa có lộ trình nào. Chọn tab Tạo để bắt đầu.
-          </Text>
-        ) : null}
-        {ACTIVE.map((c) => (
-          <Pressable
-            key={c.id}
-            accessibilityRole="button"
-            className="gap-2 rounded-2xl border border-line bg-surface p-4 active:opacity-70">
-            <Text className="text-[17px] font-bold text-ink">{c.title}</Text>
-            <Text className="text-[14px] text-ink-muted">Tiếp theo: {c.next}</Text>
-            <ProgressBar done={c.done} total={c.total} />
-            <Text className="text-[13px] text-ink-muted">
-              {c.done}/{c.total} bài
-            </Text>
-          </Pressable>
-        ))}
+        {!data ? (
+          error ? <Retry onPress={reload} /> : <PathListSkeleton />
+        ) : data.length === 0 ? (
+          <>
+            <Text className="text-[15px] leading-[22px] text-ink-muted">Bạn chưa có lộ trình nào.</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/new-path')}
+              className="min-h-12 items-center justify-center rounded-[24px] bg-tint ios:active:opacity-80">
+              <Text className="text-base font-bold text-on-tint">Tạo lộ trình với AI</Text>
+            </Pressable>
+          </>
+        ) : (
+          <>
+            {data.map((p) => (
+              <PathRow key={p.id} path={p} onPress={() => router.push(`/paths/${p.id}`)} onLongPress={() => remove(p)} />
+            ))}
+            <Text className="mt-1 text-center text-[13px] text-ink-muted">Nhấn giữ một lộ trình để xoá.</Text>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

@@ -1,7 +1,8 @@
 import { Redirect, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, ScrollView as RNScrollView } from 'react-native';
+import { Alert, KeyboardAvoidingView, ScrollView as RNScrollView } from 'react-native';
+import { ChatSkeleton, PathSkeleton } from '@/components/skeleton';
 
 import { useAuth } from '@/auth';
 import { StateMark } from '@/components/state-mark';
@@ -10,18 +11,18 @@ import { ApiError } from '@/lib/api';
 import {
   generatePath,
   getCurrentConversation,
-  getJob,
   getPath,
   sendMessage,
   startConversation,
   startPath,
   type ChatMessage,
   type ConversationView,
-  type JobView,
   type LearningPath,
   type Preferences,
 } from '@/lib/learning-paths-api';
-import { getSocket, onJobUpdated } from '@/lib/socket';
+import { describeError } from '@/lib/errors';
+import { watchJob } from '@/lib/socket';
+import { toast } from '@/components/toast';
 import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View, useCSSVariable } from '@/tw';
 
 type Step = 'loading' | 'chat' | 'generating' | 'review';
@@ -29,30 +30,15 @@ type Step = 'loading' | 'chat' | 'generating' | 'review';
 type Failure = { status?: number; code?: string | null };
 
 const LEVEL_LABEL = { beginner: 'Cơ bản', intermediate: 'Trung cấp', advanced: 'Nâng cao' } as const;
-const JOB_POLL_MS = 15_000;
-
-const ERROR_COPY: Record<string, string> = {
-  AI_UNAVAILABLE: 'AI đang bận, thử lại sau ít phút.',
-  TURN_IN_PROGRESS: 'Đợi AI trả lời xong đã nhé.',
-  CONVERSATION_LIMIT: 'Cuộc trò chuyện đã dài quá. Bắt đầu lại nhé?',
-  CONVERSATION_CLOSED: 'Lộ trình này đã bắt đầu. Hãy tạo lộ trình mới.',
-  TOPIC_REJECTED: 'Mình không thể soạn lộ trình cho chủ đề này.',
-  AI_INVALID_OUTPUT: 'Chưa soạn được lộ trình. Thử lại nhé.',
-};
-
-function errorText(e: Failure) {
-  if (e.status === 401) return 'Phiên đăng nhập đã hết hạn. Hãy đăng xuất và đăng nhập lại.';
-  if (e.status === 429) return 'Bạn thao tác hơi nhanh, thử lại sau một lúc.';
-  return (e.code && ERROR_COPY[e.code]) || 'Có lỗi xảy ra. Kiểm tra kết nối rồi thử lại.';
-}
 
 const currentConversation = async () => (await getCurrentConversation()) ?? (await startConversation());
 const toFailure = (e: unknown): Failure => (e instanceof ApiError ? e : {});
+const describe = (f: Failure) => describeError(f instanceof ApiError ? f : f.code ? { code: f.code } : new TypeError());
 /** These errors are only fixed by a fresh conversation. */
 const needsRestart = (e: Failure | null) => e?.code === 'CONVERSATION_LIMIT' || e?.code === 'CONVERSATION_CLOSED';
 
 /** Required before generating; goal stays optional. Mirrors the server's `ready` rule. */
-const missingCount = (p: Preferences) => [p.topic, p.level, p.dailyMinutes].filter((v) => !v).length;
+const missingCount = (p: Preferences) => [p.topic, p.level].filter((v) => !v).length;
 
 function Header({ title, onBack, onNewChat }: { title: string; onBack: () => void; onNewChat?: () => void }) {
   const ink = useCSSVariable('--color-ink');
@@ -87,7 +73,6 @@ function Brief({ p }: { p: Preferences }) {
   const items = [
     ['Chủ đề', p.topic],
     ['Trình độ', p.level && LEVEL_LABEL[p.level]],
-    ['Thời gian', p.dailyMinutes && `${p.dailyMinutes} phút/ngày`],
     ...(p.goal ? ([['Mục tiêu', p.goal]] as const) : []),
   ] as const;
   return (
@@ -164,7 +149,12 @@ export default function NewPathScreen() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<Failure | null>(null);
+  // Kept for the recovery buttons; the message itself goes to the toast.
+  const [error, setErrorState] = useState<Failure | null>(null);
+  const setError = useCallback((f: Failure | null) => {
+    setErrorState(f);
+    if (f) toast.error(describe(f));
+  }, []);
   // On the generating step, "Thử lại" reloads the conversation instead of starting another (costly) job.
   const [retryLoad, setRetryLoad] = useState(false);
   const [path, setPath] = useState<LearningPath | null>(null);
@@ -207,7 +197,7 @@ export default function NewPathScreen() {
     currentConversation()
       .then(open)
       .catch((e: unknown) => setError(toFailure(e)));
-  }, [status, open]);
+  }, [status, open, setError]);
 
   const reload = (fetch: () => Promise<ConversationView>) => {
     setStep('loading');
@@ -227,52 +217,29 @@ export default function NewPathScreen() {
     ]);
   };
 
-  // Wait for the job: socket events, plus re-reads on connect, on foreground and every 15 s (events can be missed).
+  // Wait for the job (socket + re-reads); only its terminal status changes the screen.
   useEffect(() => {
     if (step !== 'generating' || !jobId || error) return;
-    // Only a terminal status changes the screen, and only once, so stale or duplicate updates are ignored.
-    let settled = false;
     let active = true;
-    const apply = async (job: Pick<JobView, 'status' | 'resultId' | 'errorCode'>) => {
-      if (settled) return;
+    const stop = watchJob(jobId, async (job) => {
       if (job.status === 'failed') {
-        settled = true;
         setRetryLoad(false);
-        setError({ code: job.errorCode });
-      } else if (job.status === 'succeeded' && job.resultId) {
-        settled = true;
-        try {
-          const draft = await getPath(job.resultId);
-          if (active) showDraft(draft);
-        } catch (e) {
-          if (!active) return;
-          setRetryLoad(true);
-          setError(toFailure(e));
-        }
+        return setError({ code: job.errorCode });
       }
-    };
-    const check = () => {
-      getJob(jobId).then(
-        (j) => {
-          if (active) apply(j);
-        },
-        () => undefined, // the next trigger retries
-      );
-    };
-    const socket = getSocket();
-    const off = onJobUpdated(jobId, apply);
-    socket.on('connect', check);
-    const appState = AppState.addEventListener('change', (s) => s === 'active' && check());
-    const timer = setInterval(check, JOB_POLL_MS);
-    check(); // the job may have finished before we subscribed
+      try {
+        const draft = await getPath(job.resultId!);
+        if (active) showDraft(draft);
+      } catch (e) {
+        if (!active) return;
+        setRetryLoad(true);
+        setError(toFailure(e));
+      }
+    });
     return () => {
       active = false;
-      off();
-      socket.off('connect', check);
-      appState.remove();
-      clearInterval(timer);
+      stop();
     };
-  }, [step, jobId, error, showDraft]);
+  }, [step, jobId, error, showDraft, setError]);
 
   if (status !== 'signedIn') return <Redirect href="/welcome" />;
 
@@ -338,7 +305,7 @@ export default function NewPathScreen() {
     setError(null);
     try {
       await startPath(path.id, edited ? modules : undefined);
-      router.dismissTo('/courses');
+      router.replace(`/paths/${path.id}`);
     } catch (e) {
       setError(toFailure(e));
     }
@@ -348,20 +315,14 @@ export default function NewPathScreen() {
     return (
       <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
         <Header title="Tạo lộ trình với AI" onBack={close} />
-        <View className="flex-1 items-center justify-center gap-4 px-5">
-          {error ? (
-            <>
-              <Text accessibilityRole="alert" className="text-center text-[16px] leading-6 text-ink">
-                {errorText(error)}
-              </Text>
-              <View className="w-full">
-                <PrimaryButton label="Thử lại" onPress={resume} />
-              </View>
-            </>
-          ) : (
-            <ActivityIndicator size="large" />
-          )}
-        </View>
+        {error ? (
+          <View className="flex-1 justify-center gap-3 px-5">
+            <Text className="text-center text-[16px] leading-6 text-ink-muted">Chưa tải được cuộc trò chuyện.</Text>
+            <PrimaryButton label="Thử lại" onPress={resume} />
+          </View>
+        ) : (
+          <ChatSkeleton />
+        )}
       </SafeAreaView>
     );
   }
@@ -370,12 +331,10 @@ export default function NewPathScreen() {
     return (
       <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
         <Header title="Tạo lộ trình" onBack={close} />
-        <View className="flex-1 items-center justify-center gap-4 px-5">
+        <View className={`flex-1 gap-4 ${error ? 'items-center justify-center px-5' : ''}`}>
           {error ? (
             <>
-              <Text accessibilityRole="alert" className="text-center text-[16px] leading-6 text-ink">
-                {errorText(error)}
-              </Text>
+              <Text className="text-center text-[17px] font-semibold text-ink">Chưa tạo được lộ trình.</Text>
               <View className="w-full gap-1">
                 {/* A rejected topic fails again on retry: the only way on is to change it in the chat. */}
                 {error.code === 'TOPIC_REJECTED' ? (
@@ -393,13 +352,9 @@ export default function NewPathScreen() {
               </View>
             </>
           ) : (
-            <>
-              <ActivityIndicator size="large" />
-              <Text accessibilityLiveRegion="polite" className="text-center text-[17px] font-semibold text-ink">
-                Đang soạn lộ trình cho {prefs.topic}…
-              </Text>
-              <Text className="text-center text-[14px] text-ink-muted">Việc này có thể mất vài chục giây.</Text>
-            </>
+            <View className="w-full flex-1 pt-2">
+              <PathSkeleton caption={`Đang soạn lộ trình cho ${prefs.topic ?? 'bạn'}… việc này có thể mất vài chục giây.`} />
+            </View>
           )}
         </View>
       </SafeAreaView>
@@ -441,11 +396,6 @@ export default function NewPathScreen() {
           {edited ? <TextButton label="Khôi phục bản gốc" onPress={() => setModules(path.modules)} /> : null}
         </ScrollView>
         <View className="gap-1 px-5 pb-2">
-          {error ? (
-            <Text accessibilityRole="alert" className="text-center text-[14px] text-tint-ink">
-              {errorText(error)}
-            </Text>
-          ) : null}
           <PrimaryButton label="Bắt đầu học" onPress={start} />
           <TextButton label="Quay lại trò chuyện" onPress={backToChat} />
           <TextButton label="Soạn lại từ đầu" onPress={restart} />
@@ -472,12 +422,9 @@ export default function NewPathScreen() {
             <Message key={i} m={m} />
           ))}
           {sending ? <TypingBubble /> : null}
-          {error ? (
-            <View className="items-start gap-1 pl-10">
-              <Text accessibilityRole="alert" className="text-[14px] text-tint-ink">
-                {errorText(error)}
-              </Text>
-              {needsRestart(error) ? <TextButton label="Bắt đầu lại" onPress={restart} /> : null}
+          {needsRestart(error) ? (
+            <View className="items-start pl-10">
+              <TextButton label="Bắt đầu lại" onPress={restart} />
             </View>
           ) : null}
         </RNScrollView>

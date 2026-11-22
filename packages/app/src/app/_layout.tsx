@@ -8,6 +8,7 @@ import { useColorScheme } from 'react-native';
 
 import { AuthProvider, useAuth } from '@/auth';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { Toaster } from '@/components/toast';
 import { Colors } from '@/constants/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -31,8 +32,12 @@ function RootNavigator() {
   return (
     <ThemeProvider value={theme}>
       <StatusBar style="auto" />
-      <Stack screenOptions={{ headerShown: false }} />
+      <Stack screenOptions={{ headerShown: false }}>
+        {/* The create flow slides in from the right over the tabs, and back out when closed. */}
+        <Stack.Screen name="new-path" options={{ animation: 'slide_from_right' }} />
+      </Stack>
       <AnimatedSplashOverlay />
+      <Toaster />
     </ThemeProvider>
   );
 }

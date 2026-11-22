@@ -11,7 +11,9 @@ import { DobField } from '@/components/dob-field';
 import { StateMark, type MarkState } from '@/components/state-mark';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { toast } from '@/components/toast';
 import { ApiError } from '@/lib/api';
+import { describeError } from '@/lib/errors';
 import { resendVerification, signIn, signUp, verifyEmail } from '@/lib/auth-api';
 import {
   profileSchema,
@@ -138,7 +140,6 @@ export default function AccountScreen() {
 
   const mode: Mode = modeParam === 'sign-in' ? 'sign-in' : 'sign-up';
   const [step, setStep] = useState<SignUpStep>('credentials');
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resendIn, setResendIn] = useState(0);
 
@@ -200,7 +201,6 @@ export default function AccountScreen() {
 
   function switchMode(next: Mode) {
     setStep('credentials');
-    setError(null);
     credentialsForm.clearErrors();
     profileForm.clearErrors();
     verificationForm.reset();
@@ -216,7 +216,7 @@ export default function AccountScreen() {
       await setSession(tokens);
       router.replace('/');
     } catch (e) {
-      setError(humanError(e, 'Mã không đúng hoặc đã hết hạn. Thử lại hoặc gửi mã mới.'));
+      toast.error(humanError(e, 'Mã không đúng hoặc đã hết hạn. Thử lại hoặc gửi mã mới.'));
     } finally {
       setBusy(false);
     }
@@ -233,9 +233,9 @@ export default function AccountScreen() {
         setStep('verify');
         verificationForm.reset();
         setResendIn(60);
-        setError('Email chưa xác minh. Chúng tôi vừa gửi mã mới.');
+        toast.info('Email chưa xác minh. Chúng tôi vừa gửi mã mới.');
       } else {
-        setError(humanError(e, 'Email hoặc mật khẩu chưa đúng.'));
+        toast.error(humanError(e, 'Email hoặc mật khẩu chưa đúng.'));
       }
     } finally {
       setBusy(false);
@@ -256,9 +256,9 @@ export default function AccountScreen() {
       setResendIn(60);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
-        setError('Email này đã có tài khoản. Hãy đăng nhập.');
+        toast.error('Email này đã có tài khoản. Hãy đăng nhập.');
       } else {
-        setError(humanError(e, 'Không tạo được tài khoản. Thử lại.'));
+        toast.error(humanError(e, 'Không tạo được tài khoản. Thử lại.'));
       }
     } finally {
       setBusy(false);
@@ -267,7 +267,6 @@ export default function AccountScreen() {
 
   function onPrimary() {
     if (busy) return;
-    setError(null);
 
     if (showingVerify) {
       void verificationForm.handleSubmit(submitVerification)();
@@ -295,12 +294,11 @@ export default function AccountScreen() {
   async function onResend() {
     if (resendIn > 0 || busy || !email.trim()) return;
     setBusy(true);
-    setError(null);
     try {
       await resendVerification({ email: email.trim().toLowerCase() });
       setResendIn(60);
     } catch (e) {
-      setError(humanError(e, 'Chưa gửi được mã. Thử lại sau.'));
+      toast.error(humanError(e, 'Chưa gửi được mã. Thử lại sau.'));
     } finally {
       setBusy(false);
     }
@@ -333,12 +331,10 @@ export default function AccountScreen() {
             onPress={() => {
               if (mode === 'sign-up' && step === 'profile') {
                 setStep('credentials');
-                setError(null);
                 return;
               }
               if (showingVerify && mode === 'sign-in') {
                 setStep('credentials');
-                setError(null);
                 return;
               }
               if (router.canGoBack()) router.back();
@@ -489,12 +485,6 @@ export default function AccountScreen() {
             ) : null}
           </View>
 
-          {error ? (
-            <Text accessibilityLiveRegion="polite" className="mt-3 text-sm leading-5 text-tint-ink">
-              {error}
-            </Text>
-          ) : null}
-
           {showingVerify ? (
             <Pressable
               accessibilityRole="button"
@@ -547,6 +537,6 @@ function humanError(e: unknown, fallback: string) {
   if (e instanceof ApiError) {
     if (typeof e.message === 'string' && e.message && !e.message.startsWith('HTTP ')) return e.message;
   }
-  if (e instanceof TypeError) return 'Không kết nối được máy chủ. Kiểm tra mạng và thử lại.';
+  if (e instanceof TypeError) return describeError(e);
   return fallback;
 }
