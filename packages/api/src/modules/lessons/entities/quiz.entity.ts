@@ -1,27 +1,19 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  JoinColumn,
-  OneToOne,
-  PrimaryGeneratedColumn,
-  type Relation,
-} from 'typeorm';
-import { PathLesson } from '../../learning-paths/entities/path-lesson.entity.js';
+import { Column, CreateDateColumn, Entity, JoinColumn, OneToOne, PrimaryGeneratedColumn, type Relation } from 'typeorm';
+import { LessonContentEntity } from './lesson-content.entity.js';
 import type { QuizQuestion } from '../lesson-output.js';
 
-/** One quiz per lesson. `questions` holds the answer key: strip it before sending to the client. */
+/** One quiz per lesson content. `questions` holds the answer key: strip it before sending to the client. */
 @Entity('quizzes')
 export class Quiz {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'lesson_id', type: 'uuid', unique: true })
-  lessonId: string;
+  @Column({ name: 'content_id', type: 'uuid', unique: true })
+  contentId: string;
 
-  @OneToOne(() => PathLesson, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'lesson_id' })
-  lesson?: Relation<PathLesson>;
+  @OneToOne(() => LessonContentEntity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'content_id' })
+  contentRow?: Relation<LessonContentEntity>;
 
   @Column({ type: 'jsonb' })
   questions: QuizQuestion[];

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathLesson } from './entities/path-lesson.entity.js';
+import { LessonContentEntity } from '../lessons/entities/lesson-content.entity.js';
 import { PathModule } from './entities/path-module.entity.js';
 import { LearningPathsService } from './learning-paths.service.js';
 
@@ -41,7 +42,9 @@ function setup(path: Partial<LearningPathEntity> | null) {
     delete: vi.fn(),
     update: vi.fn(),
     save: vi.fn((_e: unknown, rows: object[]) => Promise.resolve(rows.map((r, i) => ({ ...r, id: `new-m${i}` })))),
-    insert: vi.fn(),
+    insert: vi.fn((_e: unknown, rows: object[]) =>
+      Promise.resolve({ identifiers: rows.map((_, i) => ({ id: `c${i}` })) }),
+    ),
   };
   const ds = {
     transaction: vi.fn((fn: (mgr: typeof m) => unknown) => fn(m)),
@@ -93,7 +96,10 @@ describe('LearningPathsService', () => {
     await svc.start('u1', 'p1', edited);
     expect(m.delete).toHaveBeenCalledWith(PathModule, { pathId: 'p1' });
     expect(m.save).toHaveBeenCalledWith(PathModule, [{ pathId: 'p1', position: 0, title: 'Chỉ một chương' }]);
-    expect(m.insert).toHaveBeenCalledWith(PathLesson, [{ moduleId: 'new-m0', position: 0, title: 'Một bài' }]);
+    expect(m.insert).toHaveBeenCalledWith(LessonContentEntity, [{}]);
+    expect(m.insert).toHaveBeenCalledWith(PathLesson, [
+      { moduleId: 'new-m0', position: 0, title: 'Một bài', contentId: 'c0' },
+    ]);
     expect(m.update).toHaveBeenCalledWith(LearningPathEntity, 'p1', {
       status: 'active',
     });

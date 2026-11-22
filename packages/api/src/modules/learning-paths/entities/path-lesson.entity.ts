@@ -1,5 +1,14 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn, type Relation } from 'typeorm';
-import type { LessonContent } from '../../lessons/lesson-output.js';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+  type Relation,
+} from 'typeorm';
+import { LessonContentEntity } from '../../lessons/entities/lesson-content.entity.js';
 import { PathModule } from './path-module.entity.js';
 
 @Entity('path_lessons')
@@ -20,15 +29,13 @@ export class PathLesson {
   @Column({ type: 'varchar', length: 200 })
   title: string;
 
-  /** Validated generated content; null until the first generate_lesson job succeeds. */
-  @Column({ type: 'jsonb', nullable: true })
-  content: LessonContent | null;
+  /** Content, videos and quiz live on this row; copies of a course share it. */
+  @Column({ name: 'content_id', type: 'uuid' })
+  contentId: string;
 
-  @Column({ name: 'search_keywords', type: 'jsonb', nullable: true })
-  searchKeywords: string[] | null;
-
-  @Column({ name: 'content_generated_at', type: 'timestamptz', nullable: true })
-  contentGeneratedAt: Date | null;
+  @ManyToOne(() => LessonContentEntity, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'content_id' })
+  contentRow?: Relation<LessonContentEntity>;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

@@ -1,16 +1,9 @@
-import {
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
-import {
-  AiJobsService,
-  toJobView,
-  type JobView,
-} from '../ai-jobs/ai-jobs.service.js';
+import { AiJobsService, toJobView, type JobView } from '../ai-jobs/ai-jobs.service.js';
 import { LearningPathEntity } from '../learning-paths/entities/learning-path.entity.js';
 import { PathLesson } from '../learning-paths/entities/path-lesson.entity.js';
+import { LessonContentEntity } from './entities/lesson-content.entity.js';
 import { LessonProgress } from './entities/lesson-progress.entity.js';
 import { LessonResource } from './entities/lesson-resource.entity.js';
 import { Quiz } from './entities/quiz.entity.js';
@@ -58,6 +51,8 @@ export type CompleteView = {
 /** A lesson the user owns, with its path context and siblings in learning order. */
 export type OwnedLesson = {
   lesson: PathLesson;
+  /** The lesson's shared content row (content, keywords; videos and quiz hang off its id). */
+  content: LessonContentEntity;
   moduleTitle: string;
   path: LearningPathEntity;
   ordered: { id: string; title: string }[];
@@ -71,10 +66,7 @@ export const lessonNotFound = () =>
   });
 
 /** Every lesson id/title of a path in learning order (module position, then lesson position). */
-export async function orderedLessons(
-  m: EntityManager,
-  pathId: string,
-): Promise<{ id: string; title: string }[]> {
+export async function orderedLessons(m: EntityManager, pathId: string): Promise<{ id: string; title: string }[]> {
   return m.query(
     `SELECT l.id, l.title FROM path_lessons l JOIN path_modules m ON m.id = l.module_id
      WHERE m.path_id = $1 ORDER BY m.position, l.position`,
@@ -83,19 +75,16 @@ export async function orderedLessons(
 }
 
 /** Loads a lesson only if its path belongs to the user; otherwise 404 (no existence leak). */
-export async function findOwnedLesson(
-  m: EntityManager,
-  userId: string,
-  lessonId: string,
-): Promise<OwnedLesson | null> {
+export async function findOwnedLesson(m: EntityManager, userId: string, lessonId: string): Promise<OwnedLesson | null> {
   const lesson = await m.findOne(PathLesson, {
     where: { id: lessonId },
-    relations: { module: { path: true } },
+    relations: { module: { path: true }, contentRow: true },
   });
   const path = lesson?.module?.path;
   if (!lesson || !path || path.userId !== userId) return null;
   return {
     lesson,
+    content: lesson.contentRow!,
     moduleTitle: lesson.module!.title,
     path,
     ordered: await orderedLessons(m, path.id),
@@ -128,30 +117,19 @@ export class LessonsService {
     return this.view(userId, owned);
   }
 
-  async view(
-    userId: string,
-    { lesson, moduleTitle, path, ordered }: OwnedLesson,
-  ): Promise<LessonView> {
+  async view(userId: string, { lesson, content, moduleTitle, path, ordered }: OwnedLesson): Promise<LessonView> {
     const [progress, videos, quiz, contentJob, quizJob] = await Promise.all([
-      this.ds
-        .getRepository(LessonProgress)
-        .findOneBy({ userId, lessonId: lesson.id }),
-      this.ds
-        .getRepository(LessonResource)
-        .find({ where: { lessonId: lesson.id }, order: { position: 'ASC' } }),
-      this.ds.getRepository(Quiz).findOneBy({ lessonId: lesson.id }),
-      lesson.content
-        ? null
-        : this.jobs.latestForLesson(userId, 'generate_lesson', lesson.id),
+      this.ds.getRepository(LessonProgress).findOneBy({ userId, lessonId: lesson.id }),
+      this.ds.getRepository(LessonResource).find({ where: { contentId: content.id }, order: { position: 'ASC' } }),
+      this.ds.getRepository(Quiz).findOneBy({ contentId: content.id }),
+      content.content ? null : this.jobs.latestForLesson(userId, 'generate_lesson', lesson.id),
       this.jobs.latestForLesson(userId, 'generate_quiz', lesson.id),
     ]);
     const last = quiz
-      ? await this.ds
-          .getRepository(QuizAttempt)
-          .findOne({
-            where: { quizId: quiz.id, userId },
-            order: { createdAt: 'DESC' },
-          })
+      ? await this.ds.getRepository(QuizAttempt).findOne({
+          where: { quizId: quiz.id, userId },
+          order: { createdAt: 'DESC' },
+        })
       : null;
     const i = ordered.findIndex((l) => l.id === lesson.id);
     return {
@@ -162,7 +140,7 @@ export class LessonsService {
       moduleTitle,
       previous: ordered[i - 1] ?? null,
       next: ordered[i + 1] ?? null,
-      content: lesson.content,
+      content: content.content,
       contentJob: contentJob ? toJobView(contentJob) : null,
       videos: videos.map((v) => ({
         videoId: v.externalId,
@@ -170,16 +148,12 @@ export class LessonsService {
         channel: v.channel,
         thumbnailUrl: v.thumbnailUrl,
       })),
-      searchQuery:
-        lesson.searchKeywords?.[0] ??
-        `${lesson.title} ${path.title}`.slice(0, 200),
+      searchQuery: content.searchKeywords?.[0] ?? `${lesson.title} ${path.title}`.slice(0, 200),
       quiz: quiz
         ? {
             id: quiz.id,
             questionCount: quiz.questions.length,
-            lastAttempt: last
-              ? { correct: last.correct, total: last.total }
-              : null,
+            lastAttempt: last ? { correct: last.correct, total: last.total } : null,
           }
         : null,
       quizJob: quiz || !quizJob ? null : toJobView(quizJob),
@@ -189,22 +163,18 @@ export class LessonsService {
   /** Queues content generation; a lesson that already has content is answered by the handler without an AI call. */
   async generateContent(userId: string, lessonId: string): Promise<JobView> {
     await this.own(userId, lessonId);
-    return toJobView(
-      await this.jobs.enqueue(userId, 'generate_lesson', { lessonId }),
-    );
+    return toJobView(await this.jobs.enqueue(userId, 'generate_lesson', { lessonId }));
   }
 
   async generateQuiz(userId: string, lessonId: string): Promise<JobView> {
-    const { lesson } = await this.own(userId, lessonId);
-    if (!lesson.content)
+    const { content } = await this.own(userId, lessonId);
+    if (!content.content)
       throw new ConflictException({
         statusCode: 409,
         code: 'LESSON_NOT_READY',
         message: 'Generate the lesson content first.',
       });
-    return toJobView(
-      await this.jobs.enqueue(userId, 'generate_quiz', { lessonId }),
-    );
+    return toJobView(await this.jobs.enqueue(userId, 'generate_quiz', { lessonId }));
   }
 
   /**
@@ -237,9 +207,7 @@ export class LessonsService {
   }
 
   /** The most recently opened, unfinished lesson of an active path. */
-  async lastOpened(
-    userId: string,
-  ): Promise<{ lessonId: string; lessonTitle: string; pathId: string } | null> {
+  async lastOpened(userId: string): Promise<{ lessonId: string; lessonTitle: string; pathId: string } | null> {
     const [r] = await this.ds.query(
       `SELECT l.id AS "lessonId", l.title AS "lessonTitle", p.id AS "pathId"
        FROM lesson_progress pr JOIN path_lessons l ON l.id = pr.lesson_id
@@ -251,9 +219,7 @@ export class LessonsService {
     return r ?? null;
   }
 
-  async totals(
-    userId: string,
-  ): Promise<{ completedLessons: number; quizAttempts: number }> {
+  async totals(userId: string): Promise<{ completedLessons: number; quizAttempts: number }> {
     const [r] = await this.ds.query(
       `SELECT (SELECT count(*) FROM lesson_progress WHERE user_id = $1 AND status = 'completed')::int AS "completedLessons",
               (SELECT count(*) FROM quiz_attempts WHERE user_id = $1)::int AS "quizAttempts"`,

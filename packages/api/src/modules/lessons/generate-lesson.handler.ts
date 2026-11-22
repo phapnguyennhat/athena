@@ -2,8 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import type { AiJob } from '../ai-jobs/ai-job.entity.js';
 import { JobError, type JobHandler } from '../ai-jobs/job-handlers.js';
-import { PathLesson } from '../learning-paths/entities/path-lesson.entity.js';
 import { PathAi } from '../learning-paths/path-ai.js';
+import { LessonContentEntity } from './entities/lesson-content.entity.js';
 import { LessonResource } from './entities/lesson-resource.entity.js';
 import { findOwnedLesson } from './lessons.service.js';
 import { YouTubeService } from './youtube.service.js';
@@ -25,8 +25,8 @@ export class GenerateLessonHandler implements JobHandler {
     const owned = await findOwnedLesson(this.ds.manager, job.userId, lessonId);
     // The path was deleted while the job waited: nothing to write to.
     if (!owned) throw new JobError('LESSON_NOT_FOUND');
-    const { lesson, path, moduleTitle, ordered } = owned;
-    if (lesson.content) return lesson.id;
+    const { lesson, content: row, path, moduleTitle, ordered } = owned;
+    if (row.content) return lesson.id;
 
     const i = ordered.findIndex((l) => l.id === lesson.id);
     const out = await this.ai.lesson({
@@ -40,31 +40,27 @@ export class GenerateLessonHandler implements JobHandler {
       nextLesson: ordered[i + 1]?.title,
     });
     // A failed search never fails the lesson: the app falls back to a search link.
-    const videos = await this.youtube.search(
-      out.keywords[0] ?? lesson.title,
-      path.contentLanguage,
-    );
-    if (this.youtube.enabled && !videos.length)
-      this.log.warn(`no videos for lesson ${lesson.id}`);
+    const videos = await this.youtube.search(out.keywords[0] ?? lesson.title, path.contentLanguage);
+    if (this.youtube.enabled && !videos.length) this.log.warn(`no videos for lesson ${lesson.id}`);
 
     const { keywords, ...content } = out;
     return this.ds.transaction(async (m) => {
-      const live = await m.findOne(PathLesson, {
-        where: { id: lessonId },
+      const live = await m.findOne(LessonContentEntity, {
+        where: { id: row.id },
         lock: { mode: 'pessimistic_write' },
       });
       if (!live) throw new JobError('LESSON_NOT_FOUND');
-      if (live.content) return live.id; // a concurrent run won; keep its content
-      await m.update(PathLesson, lessonId, {
+      if (live.content) return lessonId; // a concurrent run won; keep its content
+      await m.update(LessonContentEntity, row.id, {
         content,
         searchKeywords: keywords,
-        contentGeneratedAt: new Date(),
+        generatedAt: new Date(),
       });
       if (videos.length)
         await m.insert(
           LessonResource,
           videos.map((v, position) => ({
-            lessonId,
+            contentId: row.id,
             provider: 'youtube' as const,
             externalId: v.id,
             title: v.title,

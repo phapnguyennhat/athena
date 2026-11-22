@@ -6,6 +6,7 @@ import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathLesson } from './entities/path-lesson.entity.js';
 import { PathModule } from './entities/path-module.entity.js';
+import { LessonContentEntity } from '../lessons/entities/lesson-content.entity.js';
 
 export type LessonStatus = 'not_started' | 'in_progress' | 'completed';
 
@@ -61,7 +62,16 @@ export async function insertModules(m: EntityManager, pathId: string, modules: L
       title: l.title,
     })),
   );
-  if (lessons.length) await m.insert(PathLesson, lessons);
+  if (!lessons.length) return;
+  // Each new lesson starts with its own empty content row.
+  const { identifiers } = await m.insert(
+    LessonContentEntity,
+    lessons.map(() => ({})),
+  );
+  await m.insert(
+    PathLesson,
+    lessons.map((l, i) => ({ ...l, contentId: identifiers[i].id as string })),
+  );
 }
 
 @Injectable()

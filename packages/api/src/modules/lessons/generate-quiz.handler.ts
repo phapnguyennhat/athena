@@ -20,34 +20,28 @@ export class GenerateQuizHandler implements JobHandler {
     const lessonId = job.input.lessonId as string;
     const owned = await findOwnedLesson(this.ds.manager, job.userId, lessonId);
     if (!owned) throw new JobError('LESSON_NOT_FOUND');
-    const { lesson, path } = owned;
-    if (!lesson.content) throw new JobError('LESSON_NOT_READY');
+    const { lesson, content: row, path } = owned;
+    if (!row.content) throw new JobError('LESSON_NOT_READY');
+    const contentId = row.id;
     const repo = this.ds.getRepository(Quiz);
-    const existing = await repo.findOneBy({ lessonId });
+    const existing = await repo.findOneBy({ contentId });
     if (existing) return existing.id;
 
     const { questions } = await this.ai.quiz({
       language: path.contentLanguage,
       level: path.preferences.level,
       lessonTitle: lesson.title,
-      content: lesson.content,
+      content: row.content,
     });
-    // The unique lesson_id keeps the first quiz if two runs race; the lesson may also have been deleted meanwhile.
+    // The unique content_id keeps the first quiz if two runs race; the content may also have been deleted meanwhile.
     try {
-      await repo
-        .createQueryBuilder()
-        .insert()
-        .values({ lessonId, questions })
-        .orIgnore()
-        .execute();
+      await repo.createQueryBuilder().insert().values({ contentId, questions }).orIgnore().execute();
     } catch (e) {
-      if (
-        (e as { driverError?: { code?: string } }).driverError?.code === '23503'
-      )
+      if ((e as { driverError?: { code?: string } }).driverError?.code === '23503')
         throw new JobError('LESSON_NOT_FOUND');
       throw e;
     }
-    const quiz = await repo.findOneBy({ lessonId });
+    const quiz = await repo.findOneBy({ contentId });
     if (!quiz) throw new JobError('LESSON_NOT_FOUND');
     return quiz.id;
   }
