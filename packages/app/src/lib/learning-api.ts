@@ -1,4 +1,4 @@
-import { authFetch } from '@/lib/api';
+import { ApiError, authFetch } from '@/lib/api';
 import type { JobView } from '@/lib/learning-paths-api';
 
 // Mirrors the lessons, dashboard and learning-paths controllers in packages/api.
@@ -54,7 +54,7 @@ export type AttemptResult = {
   streak: StreakView;
 };
 export type CompleteResult = { status: 'completed'; pathProgress: { done: number; total: number }; streak: StreakView };
-export type Me = { id: string; email: string; fullName: string; timezone: string };
+export type Me = { id: string; email: string; fullName: string; timezone: string; avatarUrl: string | null };
 
 export const getDashboard = () => authFetch<Dashboard>('/dashboard');
 export const listPaths = () => authFetch<PathSummary[]>('/learning-paths');
@@ -67,4 +67,15 @@ export const getQuiz = (lessonId: string) => authFetch<Quiz>(`/lessons/${lessonI
 export const submitAttempt = (quizId: string, answers: number[]) =>
   authFetch<AttemptResult>(`/quizzes/${quizId}/attempts`, { method: 'POST', json: { answers } });
 export const getMe = () => authFetch<Me>('/auth/me');
+
+/** Uploads a local JPEG straight to S3 through a signed URL, then makes it the profile photo. */
+export async function uploadAvatar(jpegUri: string): Promise<Me> {
+  const { key, uploadUrl } = await authFetch<{ key: string; uploadUrl: string }>('/auth/me/avatar/upload-url', {
+    method: 'POST',
+  });
+  const body = await (await fetch(jpegUri)).blob();
+  const put = await fetch(uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'image/jpeg' }, body });
+  if (!put.ok) throw new ApiError(put.status, { message: 'Không tải được ảnh lên. Thử lại sau nhé.' });
+  return authFetch<Me>('/auth/me/avatar', { method: 'PUT', json: { key } });
+}
 export const updateTimezone = (timezone: string) => authFetch<Me>('/auth/me', { method: 'PATCH', json: { timezone } });
