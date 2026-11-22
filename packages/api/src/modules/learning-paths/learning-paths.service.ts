@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository, type FindOptionsWhere } from 'typeorm';
 import type { LearningPath } from './dto/learning-path.dto.js';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
@@ -72,6 +72,35 @@ export async function insertModules(m: EntityManager, pathId: string, modules: L
     PathLesson,
     lessons.map((l, i) => ({ ...l, contentId: identifiers[i].id as string })),
   );
+}
+
+/** Content row ids of every lesson in these paths; collect before deleting lessons, then `pruneContents`. */
+async function contentIdsOf(m: EntityManager, pathIds: string[]): Promise<string[]> {
+  const rows: { content_id: string }[] = await m.query(
+    `SELECT l.content_id FROM path_lessons l JOIN path_modules pm ON pm.id = l.module_id WHERE pm.path_id = ANY($1)`,
+    [pathIds],
+  );
+  return rows.map((r) => r.content_id);
+}
+
+/** Deletes those content rows (cascading videos, quiz, attempts) that no lesson points at any more. */
+async function pruneContents(m: EntityManager, ids: string[]): Promise<void> {
+  if (ids.length)
+    await m.query(
+      `DELETE FROM lesson_contents c WHERE c.id = ANY($1)
+       AND NOT EXISTS (SELECT 1 FROM path_lessons l WHERE l.content_id = c.id)`,
+      [ids],
+    );
+}
+
+/** Deletes matching paths (cascading modules, lessons, progress) and their now unreferenced lesson content. */
+export async function deletePaths(m: EntityManager, where: FindOptionsWhere<LearningPathEntity>): Promise<number> {
+  const ids = (await m.find(LearningPathEntity, { where, select: { id: true } })).map((p) => p.id);
+  if (!ids.length) return 0;
+  const contentIds = await contentIdsOf(m, ids);
+  const res = await m.delete(LearningPathEntity, ids);
+  await pruneContents(m, contentIds);
+  return res.affected ?? 0;
 }
 
 @Injectable()
@@ -153,8 +182,8 @@ export class LearningPathsService {
 
   /** Deletes the path with its modules, lessons, content, quizzes, attempts and progress. Learning days stay. */
   async remove(userId: string, id: string): Promise<void> {
-    const res = await this.paths.delete({ id, userId });
-    if (!res.affected) throw notFound();
+    const affected = await this.ds.transaction((m) => deletePaths(m, { id, userId }));
+    if (!affected) throw notFound();
   }
 
   /** Accepts the reviewed draft: applies edits (draft only), activates it and closes its conversation. */
@@ -176,7 +205,9 @@ export class LearningPathsService {
       if (!path) throw notFound();
       // Review edits only apply to a draft; an active path keeps its structure.
       if (modules && path.status === 'draft') {
+        const contentIds = await contentIdsOf(m, [id]);
         await m.delete(PathModule, { pathId: id });
+        await pruneContents(m, contentIds);
         await insertModules(m, id, modules);
       }
       await m.update(LearningPathEntity, id, { status: 'active' });

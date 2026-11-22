@@ -6,7 +6,7 @@ import { validatePathOutput } from './ai-output.js';
 import { categoryNames, resolveCategory } from './categories.js';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
-import { insertModules } from './learning-paths.service.js';
+import { deletePaths, insertModules } from './learning-paths.service.js';
 import { PathAi } from './path-ai.js';
 
 /** Generates a draft path from the conversation's preferences; replaces that conversation's previous draft. */
@@ -34,7 +34,7 @@ export class GeneratePathHandler implements JobHandler {
         lock: { mode: 'pessimistic_write' },
       });
       if (live?.status !== 'open') throw new JobError('CONVERSATION_CLOSED');
-      await m.delete(LearningPathEntity, { conversationId, status: 'draft' });
+      await deletePaths(m, { conversationId, status: 'draft' });
       const categoryId = await resolveCategory(m, out.category);
       const path = await m.save(
         m.create(LearningPathEntity, {

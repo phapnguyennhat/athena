@@ -40,6 +40,7 @@ function setup(path: Partial<LearningPathEntity> | null) {
     findOneBy: vi.fn().mockResolvedValue(path),
     findOne: vi.fn().mockResolvedValue(path),
     delete: vi.fn(),
+    query: vi.fn().mockResolvedValue([{ content_id: 'old-c0' }]),
     update: vi.fn(),
     save: vi.fn((_e: unknown, rows: object[]) => Promise.resolve(rows.map((r, i) => ({ ...r, id: `new-m${i}` })))),
     insert: vi.fn((_e: unknown, rows: object[]) =>
@@ -95,6 +96,8 @@ describe('LearningPathsService', () => {
     const edited = [{ title: 'Chỉ một chương', lessons: [{ title: 'Một bài' }] }];
     await svc.start('u1', 'p1', edited);
     expect(m.delete).toHaveBeenCalledWith(PathModule, { pathId: 'p1' });
+    // The replaced lessons' content goes with them unless another lesson still points at it.
+    expect(m.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM lesson_contents'), [['old-c0']]);
     expect(m.save).toHaveBeenCalledWith(PathModule, [{ pathId: 'p1', position: 0, title: 'Chỉ một chương' }]);
     expect(m.insert).toHaveBeenCalledWith(LessonContentEntity, [{}]);
     expect(m.insert).toHaveBeenCalledWith(PathLesson, [
