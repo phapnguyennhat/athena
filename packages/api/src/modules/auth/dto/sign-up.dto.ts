@@ -1,16 +1,12 @@
 import { Transform } from 'class-transformer';
-import {
-  IsEmail,
-  IsISO8601,
-  IsString,
-  IsTimeZone,
-  Matches,
-  MaxLength,
-  MinLength,
-} from 'class-validator';
+import { IsEmail, IsISO8601, IsString, IsTimeZone, Matches, MaxLength, MinLength } from 'class-validator';
 
 export const normalizeEmail = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
+
+/** YYYY-MM-DD strings compare in date order. */
+export const isPlausibleBirthDate = (date: string) =>
+  date >= '1900-01-01' && date < new Date().toISOString().slice(0, 10);
 
 export class SignUpDto {
   @Transform(normalizeEmail)

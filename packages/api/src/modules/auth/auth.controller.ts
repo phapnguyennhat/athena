@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -28,9 +29,10 @@ import { User } from '../users/user.entity.js';
 import { AuthService } from './auth.service.js';
 import { RefreshTokenDto } from './dto/refresh-token.dto.js';
 import { SignInDto } from './dto/sign-in.dto.js';
-import { SignUpDto } from './dto/sign-up.dto.js';
+import { isPlausibleBirthDate, SignUpDto } from './dto/sign-up.dto.js';
 import { TokenPairDto } from './dto/token-pair.dto.js';
 import { AvatarUploadDto, SetAvatarDto } from './dto/avatar.dto.js';
+import { ChangePasswordDto, DeleteAccountDto } from './dto/change-password.dto.js';
 import { UpdateMeDto } from './dto/update-me.dto.js';
 import { ResendVerificationDto, VerifyEmailDto } from './dto/verify-email.dto.js';
 import { UsersService } from '../users/users.service.js';
@@ -46,7 +48,7 @@ const AVATAR_UPLOAD_TTL = 5 * 60;
 const isJpeg = (b: Uint8Array) => b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
 
 /** `/auth/me` responses: the user, with the photo's S3 key swapped for a signed URL. */
-export type MeView = Omit<User, 'avatarKey'> & { avatarUrl: string | null };
+export type MeView = Omit<User, 'avatarKey' | 'deletedAt'> & { avatarUrl: string | null };
 
 @ApiTags('auth')
 @Controller('auth')
@@ -58,7 +60,7 @@ export class AuthController {
     private readonly storage: StorageService,
   ) {}
 
-  private async view({ avatarKey, ...user }: User): Promise<MeView> {
+  private async view({ avatarKey, deletedAt: _, ...user }: User): Promise<MeView> {
     return {
       ...user,
       avatarUrl: avatarKey ? await this.storage.signedUrl(avatarKey) : null,
@@ -158,15 +160,52 @@ export class AuthController {
     return this.view(user);
   }
 
-  /** Update the profile: today only the timezone, which the app syncs from the device. */
+  /** Update any of `fullName`, `dateOfBirth` and `timezone` (which the app syncs from the device). */
   @Patch('me')
   @ApiBearerAuth()
-  @ApiBadRequestResponse({ description: 'Not an IANA timezone.' })
+  @ApiBadRequestResponse({
+    description: 'Unknown field, blank name, a date of birth not in the past, or not an IANA timezone.',
+  })
   @ApiUnauthorizedResponse({
     description: 'Missing, invalid, expired or revoked access token.',
   })
   async updateMe(@CurrentUser() user: User, @Body() dto: UpdateMeDto): Promise<MeView> {
-    return this.view(await this.users.updateTimezone(user.id, dto.timezone));
+    if (dto.dateOfBirth !== undefined && !isPlausibleBirthDate(dto.dateOfBirth)) {
+      throw new BadRequestException('dateOfBirth must be a past date');
+    }
+    return this.view(await this.users.updateProfile(user.id, dto));
+  }
+
+  /** Change the password. Every device is signed out; the returned pair keeps this one signed in. */
+  @Put('me/password')
+  @ApiBearerAuth()
+  @ApiBadRequestResponse({ description: 'Invalid body, or a new password not 8–128 characters.' })
+  @ApiForbiddenResponse({ description: 'Current password is wrong (`code: WRONG_PASSWORD`).' })
+  @ApiTooManyRequestsResponse(TOO_MANY_REQUESTS)
+  @ApiUnauthorizedResponse({
+    description: 'Missing, invalid, expired or revoked access token.',
+  })
+  changePassword(@CurrentUser() user: User, @Body() dto: ChangePasswordDto): Promise<TokenPairDto> {
+    return this.auth.changePassword(user.id, dto);
+  }
+
+  /** Delete the account (soft delete), after confirming the password. Every token stops working; the email can sign up again. */
+  @Delete('me')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiBearerAuth()
+  @ApiNoContentResponse({ description: 'Account deleted.' })
+  @ApiBadRequestResponse({ description: 'Invalid body.' })
+  @ApiForbiddenResponse({ description: 'Password is wrong (`code: WRONG_PASSWORD`).' })
+  @ApiTooManyRequestsResponse(TOO_MANY_REQUESTS)
+  @ApiUnauthorizedResponse({
+    description: 'Missing, invalid, expired or revoked access token.',
+  })
+  deleteAccount(
+    @CurrentUser() user: User,
+    @Body() { password }: DeleteAccountDto,
+    @CurrentSession() claims: JwtClaims,
+  ): Promise<void> {
+    return this.auth.deleteAccount(user.id, password, claims);
   }
 
   /**

@@ -1,13 +1,23 @@
 import { ApiHideProperty } from '@nestjs/swagger';
-import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  DeleteDateColumn,
+  Entity,
+  Index,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 
 @Entity('users')
+// Unique among live accounts only: a deleted account's email can sign up again.
+@Index('UQ_users_email_active', ['email'], { unique: true, where: '"deleted_at" IS NULL' })
 export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   // Stored lowercased; the unique index makes sign-up race-safe.
-  @Column({ type: 'varchar', length: 254, unique: true })
+  @Column({ type: 'varchar', length: 254 })
   email: string;
 
   // Null for future social-login accounts. Never selected unless asked for.
@@ -51,4 +61,9 @@ export class User {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  /** Set by account deletion (soft delete); TypeORM reads then skip the row, so it can no longer sign in. */
+  @ApiHideProperty()
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt: Date | null;
 }

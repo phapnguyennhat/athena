@@ -123,8 +123,7 @@ describe('Auth (e2e)', () => {
     await http.post('/auth/verify-email').send({ email: 'nobody@example.com', code: '123456' }).expect(400);
   });
 
-  it('rejects a second sign-up with the same email', () =>
-    signUp({ email }).expect(409));
+  it('rejects a second sign-up with the same email', () => signUp({ email }).expect(409));
 
   const valid = { email: 'a@example.com', password, dateOfBirth: '2000-01-01', ...profile };
   it.each([
@@ -219,6 +218,78 @@ describe('Auth (e2e)', () => {
     await me(body.accessToken).expect(401);
     await http.post('/auth/refresh').send({ refreshToken: body.refreshToken }).expect(401);
   });
+
+  /** A fresh signed-up, verified account and its tokens. */
+  async function newAccount(address = `user-${randomUUID()}@example.com`) {
+    await signUp({ email: address }).expect(202);
+    await http
+      .post('/auth/verify-email')
+      .send({ email: address, code: codeOf(await latestMail(address)) })
+      .expect(204);
+    const { body } = await http.post('/auth/sign-in').send({ email: address, password }).expect(200);
+    return { address, tokens: body as { accessToken: string; refreshToken: string } };
+  }
+
+  it('changes the password: the old one and every old refresh token stop working', async () => {
+    const { address, tokens } = await newAccount();
+    const change = (body: Record<string, unknown>) =>
+      http.put('/auth/me/password').set('Authorization', `Bearer ${tokens.accessToken}`).send(body);
+
+    expect(
+      (await change({ currentPassword: 'wrong password', newPassword: 'another password' }).expect(403)).body,
+    ).toMatchObject({
+      code: 'WRONG_PASSWORD',
+    });
+    await change({ currentPassword: password, newPassword: 'short' }).expect(400);
+    const { body: fresh } = await change({ currentPassword: password, newPassword: 'another password' }).expect(200);
+
+    await http.post('/auth/refresh').send({ refreshToken: tokens.refreshToken }).expect(401);
+    await http.post('/auth/refresh').send({ refreshToken: fresh.refreshToken }).expect(200);
+    await http.post('/auth/sign-in').send({ email: address, password }).expect(401);
+    await http.post('/auth/sign-in').send({ email: address, password: 'another password' }).expect(200);
+  });
+
+  it('soft-deletes the account: tokens die, sign-in fails, and the email can sign up again', async () => {
+    const { address, tokens } = await newAccount();
+    const other = (await http.post('/auth/sign-in').send({ email: address, password }).expect(200)).body;
+    const del = (body: Record<string, unknown>) =>
+      http.delete('/auth/me').set('Authorization', `Bearer ${tokens.accessToken}`).send(body);
+
+    await del({ password: 'wrong password' }).expect(403);
+    await del({ password }).expect(204);
+
+    await me(tokens.accessToken).expect(401);
+    await me(other.accessToken).expect(401);
+    await http.post('/auth/refresh').send({ refreshToken: other.refreshToken }).expect(401);
+    await http.post('/auth/sign-in').send({ email: address, password }).expect(401);
+
+    // Same email, new account with a new id; the deleted row stays.
+    const again = await newAccount(address);
+    const { body } = await me(again.tokens.accessToken).expect(200);
+    expect(body.email).toBe(address);
+    expect(body).not.toHaveProperty('deletedAt');
+    await signUp({ email: address }).expect(409);
+    // Two sign-ups and a dozen password hashes.
+  }, 20_000);
+
+  it('edits the full name and date of birth with the sign-up rules', async () => {
+    const { tokens } = await newAccount();
+    const patch = (body: Record<string, unknown>) =>
+      http.patch('/auth/me').set('Authorization', `Bearer ${tokens.accessToken}`).send(body);
+
+    for (const bad of [
+      { fullName: '  ' },
+      { fullName: 'x'.repeat(101) },
+      { dateOfBirth: '2999-01-01' },
+      { dateOfBirth: '2001-02-29' },
+      { email: 'x@example.com' },
+    ]) {
+      await patch(bad).expect(400);
+    }
+    const { body } = await patch({ fullName: '  Trần Thị B ', dateOfBirth: '1995-06-15' }).expect(200);
+    expect(body).toMatchObject({ fullName: 'Trần Thị B', dateOfBirth: '1995-06-15', timezone: 'Asia/Ho_Chi_Minh' });
+    expect((await patch({}).expect(200)).body).toMatchObject({ fullName: 'Trần Thị B' });
+  }, 15_000);
 
   describe('RedisRefreshTokenStore contract', () => {
     const cases = authenticationStoreContract(
