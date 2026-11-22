@@ -15,22 +15,17 @@ const base = {
   SMTP_PORT: '1025',
   MAIL_FROM: 'Athena <no-reply@example.com>',
   RABBITMQ_URL: 'amqp://u:p@localhost:5672',
+  GEMINI_API_KEY: 'test-key',
 };
 
 describe('validateEnv', () => {
-  it('requires GEMINI_API_KEY when AI_PROVIDER is gemini', () => {
-    expect(() => validateEnv({ ...base, AI_PROVIDER: 'gemini' })).toThrow(/GEMINI_API_KEY/);
+  it('requires GEMINI_API_KEY', () => {
+    const { GEMINI_API_KEY: _omit, ...rest } = base;
+    expect(() => validateEnv(rest)).toThrow(/GEMINI_API_KEY/);
   });
 
-  it('defaults AI_PROVIDER to stub and GEMINI_MODEL to gemini-2.5-flash', () => {
-    const env = validateEnv(base);
-    expect(env.AI_PROVIDER).toBe('stub');
-    expect(env.GEMINI_MODEL).toBe('gemini-2.5-flash');
-  });
-
-  it('requires AI_PROVIDER to be set explicitly in production', () => {
-    expect(() => validateEnv({ ...base, NODE_ENV: 'production' })).toThrow(/AI_PROVIDER/);
-    expect(validateEnv({ ...base, NODE_ENV: 'production', AI_PROVIDER: 'stub' }).AI_PROVIDER).toBe('stub');
+  it('defaults GEMINI_MODEL to gemini-2.5-flash', () => {
+    expect(validateEnv(base).GEMINI_MODEL).toBe('gemini-2.5-flash');
   });
 
   it('requires RABBITMQ_URL', () => {

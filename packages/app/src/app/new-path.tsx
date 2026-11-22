@@ -1,7 +1,7 @@
 import { Redirect, useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
-import { ActivityIndicator, AppState, KeyboardAvoidingView, ScrollView as RNScrollView } from 'react-native';
+import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, ScrollView as RNScrollView } from 'react-native';
 
 import { useAuth } from '@/auth';
 import { StateMark } from '@/components/state-mark';
@@ -54,7 +54,7 @@ const needsRestart = (e: Failure | null) => e?.code === 'CONVERSATION_LIMIT' || 
 /** Required before generating; goal stays optional. Mirrors the server's `ready` rule. */
 const missingCount = (p: Preferences) => [p.topic, p.level, p.dailyMinutes].filter((v) => !v).length;
 
-function Header({ title, onBack }: { title: string; onBack: () => void }) {
+function Header({ title, onBack, onNewChat }: { title: string; onBack: () => void; onNewChat?: () => void }) {
   const ink = useCSSVariable('--color-ink');
   return (
     <View className="h-14 flex-row items-center gap-3 px-3">
@@ -68,6 +68,15 @@ function Header({ title, onBack }: { title: string; onBack: () => void }) {
       <Text accessibilityRole="header" numberOfLines={1} className="flex-1 text-[17px] font-bold text-ink">
         {title}
       </Text>
+      {onNewChat ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Cuộc trò chuyện mới"
+          onPress={onNewChat}
+          className="h-11 w-11 items-center justify-center rounded-full bg-surface active:opacity-70">
+          <SymbolView name={{ ios: 'square.and.pencil', android: 'edit_square', web: 'edit_square' }} size={18} tintColor={ink as string} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -209,6 +218,14 @@ export default function NewPathScreen() {
   };
   const resume = () => reload(currentConversation);
   const restart = () => reload(startConversation);
+  // Starting over closes this conversation (and deletes its draft), so confirm once the user has said something.
+  const newChat = () => {
+    if (!messages.some((m) => m.role === 'user')) return restart();
+    Alert.alert('Bắt đầu cuộc trò chuyện mới?', 'Cuộc trò chuyện hiện tại sẽ được đóng lại.', [
+      { text: 'Huỷ', style: 'cancel' },
+      { text: 'Bắt đầu mới', style: 'destructive', onPress: restart },
+    ]);
+  };
 
   // Wait for the job: socket events, plus re-reads on connect, on foreground and every 15 s (events can be missed).
   useEffect(() => {
@@ -443,7 +460,7 @@ export default function NewPathScreen() {
     <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
       {/* Edge-to-edge Android no longer resizes the window for the keyboard, so pad on both platforms. */}
       <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
-        <Header title="Tạo lộ trình với AI" onBack={close} />
+        <Header title="Tạo lộ trình với AI" onBack={close} onNewChat={sending ? undefined : newChat} />
         <Brief p={prefs} />
         <RNScrollView
           ref={scroller}

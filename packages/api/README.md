@@ -57,8 +57,7 @@ Environment variables are read from `.env` (never commit it).
 | `RABBITMQ_URL` | required | AMQP URL of the AI job queue. Locally `amqp://<RABBITMQ_USER>:<RABBITMQ_PASSWORD>@localhost:5672` |
 | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | required by `docker compose` | Credentials the local RabbitMQ container is created with; must match `RABBITMQ_URL` |
 | `RABBITMQ_PORT`, `RABBITMQ_UI_PORT` | optional | Host ports of the local RabbitMQ container, default `5672` and `15672` (management UI at http://localhost:15672) |
-| `AI_PROVIDER` | optional, **required in production** | `gemini` calls Google Gemini; `stub` returns canned answers with no key. Defaults to `stub` outside production |
-| `GEMINI_API_KEY` | required when `AI_PROVIDER=gemini` | Gemini API key; server-side only |
+| `GEMINI_API_KEY` | required | Gemini API key; server-side only |
 | `GEMINI_MODEL` | optional | Gemini model, default `gemini-2.5-flash` |
 | YouTube Data API key | planned | Resource discovery; server-side only |
 

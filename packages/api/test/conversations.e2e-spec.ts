@@ -12,14 +12,14 @@ import { GREETING } from '../src/modules/learning-paths/conversations.service.js
 import { PathConversation } from '../src/modules/learning-paths/entities/path-conversation.entity.js';
 import { PathMessage } from '../src/modules/learning-paths/entities/path-message.entity.js';
 import { PathAi } from '../src/modules/learning-paths/path-ai.js';
-import { StubPathAi } from '../src/modules/learning-paths/stub-path-ai.js';
+import { FakePathAi } from './fake-path-ai.js';
 import { User } from '../src/modules/users/user.entity.js';
 
 // Stub with a test-controlled delay and failure.
-class ControlledAi extends StubPathAi {
+class ControlledAi extends FakePathAi {
   delayMs = 0;
   fail = false;
-  override async chat(input: Parameters<StubPathAi['chat']>[0]) {
+  override async chat(input: Parameters<FakePathAi['chat']>[0]) {
     if (this.delayMs) await new Promise((r) => setTimeout(r, this.delayMs));
     if (this.fail) throw new AiError('AI_UNAVAILABLE', true);
     return super.chat(input);

@@ -16,7 +16,6 @@ import { LearningPathsController } from './learning-paths.controller.js';
 import { LearningPathsService } from './learning-paths.service.js';
 import { GeminiPathAi } from './gemini-path-ai.js';
 import { PathAi } from './path-ai.js';
-import { StubPathAi } from './stub-path-ai.js';
 
 @Module({
   imports: [
@@ -32,9 +31,7 @@ import { StubPathAi } from './stub-path-ai.js';
       provide: PathAi,
       inject: [ConfigService],
       useFactory: (c: ConfigService) =>
-        c.get('AI_PROVIDER') === 'gemini'
-          ? new GeminiPathAi(new GoogleGenAI({ apiKey: c.get('GEMINI_API_KEY') }), c.get('GEMINI_MODEL') ?? 'gemini-2.5-flash')
-          : new StubPathAi(),
+        new GeminiPathAi(new GoogleGenAI({ apiKey: c.get('GEMINI_API_KEY') }), c.get('GEMINI_MODEL') ?? 'gemini-2.5-flash'),
     },
   ],
   exports: [GeneratePathHandler],

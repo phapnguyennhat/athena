@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { Level, Preferences } from './dto/learning-path.dto.js';
-import { PathAi, type ChatOutput, type ChatTurnInput, type PathOutput } from './path-ai.js';
+import type { Level, Preferences } from '../src/modules/learning-paths/dto/learning-path.dto.js';
+import { PathAi, type ChatOutput, type ChatTurnInput, type PathOutput } from '../src/modules/learning-paths/path-ai.js';
 
 const LEVEL_REPLIES = ['Cơ bản', 'Trung cấp', 'Nâng cao'];
 const TIME_REPLIES = ['15 phút', '30 phút', '60 phút'];
@@ -17,9 +17,9 @@ function parseMinutes(text: string): number | undefined {
   return n && +n >= 5 && +n <= 240 ? +n : undefined;
 }
 
-/** Deterministic slot filling, no model: topic, then level, then daily time, then an optional goal. */
+/** Test-only fake of PathAi (no model, no network): deterministic slot filling: topic, then level, then daily time, then an optional goal. */
 @Injectable()
-export class StubPathAi extends PathAi {
+export class FakePathAi extends PathAi {
   async chat({ history, preferences }: ChatTurnInput): Promise<ChatOutput> {
     const p = { ...preferences };
     const last =

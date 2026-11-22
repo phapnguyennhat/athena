@@ -9,7 +9,6 @@ import {
   Max,
   Min,
   MinLength,
-  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -84,14 +83,10 @@ export class EnvironmentVariables {
   @IsNotEmpty()
   MAIL_FROM: string;
 
-  /** `stub` needs no key (local/dev/tests); `gemini` calls the real API. Defaults to `stub` only outside production. */
-  @IsIn(['gemini', 'stub'])
-  AI_PROVIDER: 'gemini' | 'stub' = 'stub';
-
-  @ValidateIf((o: EnvironmentVariables) => o.AI_PROVIDER === 'gemini')
+  /** Server-side only; never sent to the client. */
   @IsString()
   @IsNotEmpty()
-  GEMINI_API_KEY?: string;
+  GEMINI_API_KEY: string;
 
   @IsString()
   @IsNotEmpty()
@@ -107,9 +102,6 @@ export function validateEnv(config: Record<string, unknown>): EnvironmentVariabl
   const messages = validateSync(env, { skipMissingProperties: false }).map((e) =>
     Object.values(e.constraints ?? {}).join(', '),
   );
-  // The class default can't tell "unset" from "stub", so check the raw input.
-  if (config.NODE_ENV === 'production' && !config.AI_PROVIDER)
-    messages.push('AI_PROVIDER must be set explicitly in production');
   if (messages.length > 0) throw new Error(messages.join('\n'));
   return env;
 }

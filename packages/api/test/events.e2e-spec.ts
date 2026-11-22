@@ -14,7 +14,7 @@ import { AppModule } from '../src/app.module.js';
 import { aiJobsConsumerOptions } from '../src/modules/ai-jobs/ai-jobs.constants.js';
 import { PathConversation } from '../src/modules/learning-paths/entities/path-conversation.entity.js';
 import { PathAi } from '../src/modules/learning-paths/path-ai.js';
-import { StubPathAi } from '../src/modules/learning-paths/stub-path-ai.js';
+import { FakePathAi } from './fake-path-ai.js';
 import { User } from '../src/modules/users/user.entity.js';
 
 describe('Events gateway (e2e)', () => {
@@ -29,7 +29,7 @@ describe('Events gateway (e2e)', () => {
       .overrideGuard(ThrottlerGuard)
       .useValue({ canActivate: () => true })
       .overrideProvider(PathAi)
-      .useValue(new StubPathAi())
+      .useValue(new FakePathAi())
       .compile();
     app = moduleRef.createNestApplication();
     app.connectMicroservice<MicroserviceOptions>(

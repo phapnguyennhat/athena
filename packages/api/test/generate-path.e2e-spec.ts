@@ -13,11 +13,11 @@ import { aiJobsConsumerOptions } from '../src/modules/ai-jobs/ai-jobs.constants.
 import { LearningPathEntity } from '../src/modules/learning-paths/entities/learning-path.entity.js';
 import { PathConversation } from '../src/modules/learning-paths/entities/path-conversation.entity.js';
 import { PathAi } from '../src/modules/learning-paths/path-ai.js';
-import { StubPathAi } from '../src/modules/learning-paths/stub-path-ai.js';
+import { FakePathAi } from './fake-path-ai.js';
 import type { Preferences } from '../src/modules/learning-paths/dto/learning-path.dto.js';
 import { User } from '../src/modules/users/user.entity.js';
 
-class ControlledAi extends StubPathAi {
+class ControlledAi extends FakePathAi {
   delayMs = 0;
   nineModules = false;
   override async generate(p: Preferences) {
