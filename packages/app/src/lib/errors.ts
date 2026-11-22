@@ -23,7 +23,6 @@ export function describeError(e: unknown): string {
   const code = e instanceof ApiError ? e.code : typeof e === 'string' ? e : (e as { code?: string } | null)?.code;
   if (code && COPY[code]) return COPY[code];
   if (e instanceof ApiError) {
-    if (e.status === 401) return 'Phiên đăng nhập đã hết hạn. Hãy đăng nhập lại.';
     if (e.status === 429) return 'Bạn thao tác hơi nhanh, thử lại sau một lúc.';
     if (e.status >= 500) return 'Máy chủ đang gặp sự cố. Thử lại sau.';
   }

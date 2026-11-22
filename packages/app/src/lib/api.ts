@@ -115,8 +115,10 @@ export async function authFetch<T>(path: string, init: RequestInit & { json?: un
     else {
       try {
         fresh = await refreshAccessToken();
-      } catch {
-        throw err;
+      } catch (refreshErr) {
+        // Refresh rejected (401): the session is over and the app is already signing out, so surface the
+        // original 401, which screens never toast. Network/5xx: surface that, the session is still valid.
+        throw refreshErr instanceof ApiError && refreshErr.status === 401 ? err : refreshErr;
       }
     }
     return send(fresh);

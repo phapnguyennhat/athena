@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'rea
 import { Alert, KeyboardAvoidingView, ScrollView as RNScrollView } from 'react-native';
 import { ChatSkeleton, PathSkeleton } from '@/components/skeleton';
 
-import { useAuth } from '@/auth';
+import { useAuth, useSignedOutHref } from '@/auth';
 import { StateMark } from '@/components/state-mark';
 import { TypingBubble } from '@/components/typing-bubble';
 import { ApiError } from '@/lib/api';
@@ -139,6 +139,7 @@ function TextButton({ label, onPress }: { label: string; onPress: () => void }) 
 export default function NewPathScreen() {
   const router = useRouter();
   const { status } = useAuth();
+  const signedOutHref = useSignedOutHref();
 
   const [step, setStep] = useState<Step>('loading');
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -153,7 +154,7 @@ export default function NewPathScreen() {
   const [error, setErrorState] = useState<Failure | null>(null);
   const setError = useCallback((f: Failure | null) => {
     setErrorState(f);
-    if (f) toast.error(describe(f));
+    if (f && f.status !== 401) toast.error(describe(f)); // 401: session handling navigates, no message
   }, []);
   // On the generating step, "Thử lại" reloads the conversation instead of starting another (costly) job.
   const [retryLoad, setRetryLoad] = useState(false);
@@ -241,7 +242,7 @@ export default function NewPathScreen() {
     };
   }, [step, jobId, error, showDraft, setError]);
 
-  if (status !== 'signedIn') return <Redirect href="/welcome" />;
+  if (status !== 'signedIn') return <Redirect href={signedOutHref} />;
 
   const close = () => (router.canGoBack() ? router.back() : router.replace('/'));
 
@@ -455,7 +456,8 @@ export default function NewPathScreen() {
             returnKeyType="send"
             submitBehavior="submit"
             multiline
-            placeholder={missing ? `Nhắn cho AI · còn ${missing} mục` : 'Nhắn cho AI…'}
+            placeholder={missing ? 'Chủ đề, trình độ và mục tiêu của bạn…' : 'Nhắn cho AI…'}
+
             placeholderTextColor={placeholder as string}
             accessibilityLabel="Tin nhắn"
             className="max-h-32 min-h-10 flex-1 py-2 text-[16px] text-ink"

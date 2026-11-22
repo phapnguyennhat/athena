@@ -4,6 +4,7 @@ import { AccessibilityInfo } from 'react-native';
 import Animated, { FadeInUp, FadeOutUp } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { ApiError } from '@/lib/api';
 import { describeError } from '@/lib/errors';
 import { Pressable, Text, useCSSVariable } from '@/tw';
 
@@ -26,8 +27,14 @@ function show(message: string, kind: Toast['kind']) {
 export const toast = {
   error: (message: string) => show(message, 'error'),
   info: (message: string) => show(message, 'info'),
-  /** Shows the Vietnamese copy for an API/network error (see lib/errors). */
-  fromError: (e: unknown) => show(describeError(e), 'error'),
+  /**
+   * Shows the Vietnamese copy for an API/network error (see lib/errors). A 401 is silent: an expired access
+   * token is refreshed in the background, and a dead session sends the user to sign-in instead.
+   */
+  fromError: (e: unknown) => {
+    if (e instanceof ApiError && e.status === 401) return;
+    show(describeError(e), 'error');
+  },
   dismiss: () => {
     current = null;
     emit();

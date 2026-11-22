@@ -1,7 +1,7 @@
 import { Redirect } from 'expo-router';
 import { useEffect } from 'react';
 
-import { useAuth } from '@/auth';
+import { useAuth, useSignedOutHref } from '@/auth';
 import AppTabs from '@/components/app-tabs';
 import { getMe, updateTimezone } from '@/lib/learning-api';
 
@@ -15,9 +15,10 @@ async function syncTimezone() {
 
 export default function TabLayout() {
   const { status } = useAuth();
+  const signedOutHref = useSignedOutHref();
   useEffect(() => {
     if (status === 'signedIn') syncTimezone().catch(() => undefined);
   }, [status]);
-  if (status !== 'signedIn') return <Redirect href="/welcome" />;
+  if (status !== 'signedIn') return <Redirect href={signedOutHref} />;
   return <AppTabs />;
 }
