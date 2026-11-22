@@ -9,6 +9,7 @@ import { MailModule } from './mail/mail.module.js';
 import { AiJobsModule } from './modules/ai-jobs/ai-jobs.module.js';
 import { LearningPathsModule } from './modules/learning-paths/learning-paths.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { CommunityModule } from './modules/community/community.module.js';
 import { EventsModule } from './modules/events/events.module.js';
 import { LessonsModule } from './modules/lessons/lessons.module.js';
 import { UsersModule } from './modules/users/users.module.js';
@@ -28,6 +29,7 @@ import { StorageModule } from './storage/storage.module.js';
     AiJobsModule,
     LessonsModule,
     EventsModule,
+    CommunityModule,
   ],
   controllers: [AppController],
   providers: [

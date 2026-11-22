@@ -81,7 +81,7 @@ export async function findOwnedLesson(m: EntityManager, userId: string, lessonId
     relations: { module: { path: true }, contentRow: true },
   });
   const path = lesson?.module?.path;
-  if (!lesson || !path || path.userId !== userId) return null;
+  if (!lesson || !path || path.userId !== userId || path.hiddenAt) return null;
   return {
     lesson,
     content: lesson.contentRow!,
@@ -212,7 +212,7 @@ export class LessonsService {
       `SELECT l.id AS "lessonId", l.title AS "lessonTitle", p.id AS "pathId"
        FROM lesson_progress pr JOIN path_lessons l ON l.id = pr.lesson_id
        JOIN path_modules m ON m.id = l.module_id JOIN learning_paths p ON p.id = m.path_id
-       WHERE pr.user_id = $1 AND pr.status = 'in_progress' AND p.status = 'active'
+       WHERE pr.user_id = $1 AND pr.status = 'in_progress' AND p.status = 'active' AND p.hidden_at IS NULL
        ORDER BY pr.updated_at DESC LIMIT 1`,
       [userId],
     );

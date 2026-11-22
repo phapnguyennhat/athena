@@ -68,7 +68,7 @@ export class QuizzesService {
     // The caller must own a lesson on this quiz's content; a foreign quiz is indistinguishable from a missing one.
     const [owned] = await this.ds.query(
       `SELECT 1 FROM path_lessons l JOIN path_modules m ON m.id = l.module_id JOIN learning_paths p ON p.id = m.path_id
-       WHERE l.content_id = $1 AND p.user_id = $2 LIMIT 1`,
+       WHERE l.content_id = $1 AND p.user_id = $2 AND p.hidden_at IS NULL LIMIT 1`,
       [quiz.contentId, userId],
     );
     if (!owned) throw quizNotFound();

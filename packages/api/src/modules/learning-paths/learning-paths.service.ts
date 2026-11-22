@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository, type FindOptionsWhere } from 'typeorm';
+import { DataSource, EntityManager, IsNull, Repository, type FindOptionsWhere } from 'typeorm';
 import type { LearningPath } from './dto/learning-path.dto.js';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
@@ -113,7 +113,7 @@ export class LearningPathsService {
 
   async get(userId: string, id: string): Promise<LearningPathView> {
     const path = await this.paths.findOne({
-      where: { id, userId },
+      where: { id, userId, hiddenAt: IsNull() },
       relations: { modules: { lessons: true }, category: true },
     });
     if (!path) throw notFound();
@@ -161,7 +161,7 @@ export class LearningPathsService {
          JOIN path_modules m ON m.path_id = p.id
          JOIN path_lessons l ON l.module_id = m.id
          LEFT JOIN lesson_progress pr ON pr.lesson_id = l.id AND pr.user_id = $1
-         WHERE p.user_id = $1 AND p.status = 'active')
+         WHERE p.user_id = $1 AND p.status = 'active' AND p.hidden_at IS NULL)
        SELECT p.id, p.title, p.summary, p.tags,
          CASE WHEN c.id IS NULL THEN NULL ELSE json_build_object('id', c.id, 'name', c.name) END AS category,
          (SELECT count(*) FROM l WHERE l.path_id = p.id)::int AS total,
@@ -170,7 +170,7 @@ export class LearningPathsService {
             WHERE l.path_id = p.id AND l.status IS DISTINCT FROM 'completed' ORDER BY l.mp, l.lp LIMIT 1) AS next,
          GREATEST(p.updated_at, (SELECT max(l.updated_at) FROM l WHERE l.path_id = p.id)) AS "lastActiveAt"
        FROM learning_paths p LEFT JOIN categories c ON c.id = p.category_id
-       WHERE p.user_id = $1 AND p.status = 'active'
+       WHERE p.user_id = $1 AND p.status = 'active' AND p.hidden_at IS NULL
        ORDER BY "lastActiveAt" DESC`,
       [userId],
     );
@@ -180,9 +180,19 @@ export class LearningPathsService {
     }));
   }
 
-  /** Deletes the path with its modules, lessons, content, quizzes, attempts and progress. Learning days stay. */
+  /**
+   * An active original is only hidden (it stays public in Community, progress kept). A copy or a draft is deleted
+   * with its modules, lessons, progress and the content no other lesson uses. Learning days stay.
+   */
   async remove(userId: string, id: string): Promise<void> {
-    const affected = await this.ds.transaction((m) => deletePaths(m, { id, userId }));
+    const affected = await this.ds.transaction(async (m) => {
+      const hidden = await m.update(
+        LearningPathEntity,
+        { id, userId, status: 'active', sourcePathId: IsNull(), hiddenAt: IsNull() },
+        { hiddenAt: () => 'now()' },
+      );
+      return hidden.affected || deletePaths(m, { id, userId, hiddenAt: IsNull() });
+    });
     if (!affected) throw notFound();
   }
 
@@ -190,7 +200,7 @@ export class LearningPathsService {
   async start(userId: string, id: string, modules?: LearningPath['modules']): Promise<LearningPathView> {
     await this.ds.transaction(async (m) => {
       // Lock order everywhere: conversation, then its paths (the generate handler and start-over do the same).
-      const pre = await m.findOneBy(LearningPathEntity, { id, userId });
+      const pre = await m.findOneBy(LearningPathEntity, { id, userId, hiddenAt: IsNull() });
       if (!pre) throw notFound();
       if (pre.conversationId)
         await m.findOne(PathConversation, {
@@ -199,7 +209,7 @@ export class LearningPathsService {
         });
       // Re-read under lock: a regenerate may have replaced this draft meanwhile.
       const path = await m.findOne(LearningPathEntity, {
-        where: { id, userId },
+        where: { id, userId, hiddenAt: IsNull() },
         lock: { mode: 'pessimistic_write' },
       });
       if (!path) throw notFound();

@@ -1,6 +1,7 @@
 erDiagram
     users ||--o{ learning_paths : owns
     categories ||--o{ learning_paths : classifies
+    learning_paths |o--o{ learning_paths : "copied as"
     users ||--o| user_learning_stats : has
     users ||--o{ daily_activities : logs
     users ||--o{ lesson_progress : tracks
@@ -46,6 +47,8 @@ erDiagram
         varchar content_language "language of the user's input when creating the path"
         uuid category_id FK "nullable, idx; set by the LLM"
         text_array tags "lowercase Vietnamese keywords, GIN idx"
+        uuid source_path_id FK "nullable, idx; the community original this copy was made from, SET NULL"
+        timestamptz hidden_at "nullable; an active original its owner deleted, still public"
         enum status "draft | active | completed | archived"
         enum generation_status "pending | processing | completed | failed"
         varchar generation_error "user-safe message, nullable"

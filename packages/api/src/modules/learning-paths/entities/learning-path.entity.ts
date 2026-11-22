@@ -62,6 +62,18 @@ export class LearningPathEntity {
   @Column({ type: 'text', array: true, default: () => `'{}'` })
   tags: string[];
 
+  /** The community original this path is a copy of; null for originals. */
+  @Column({ name: 'source_path_id', type: 'uuid', nullable: true })
+  sourcePathId: string | null;
+
+  @ManyToOne(() => LearningPathEntity, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'source_path_id' })
+  sourcePath?: Relation<LearningPathEntity> | null;
+
+  /** Set when the owner deletes an active original: gone for them, still public in Community. */
+  @Column({ name: 'hidden_at', type: 'timestamptz', nullable: true })
+  hiddenAt: Date | null;
+
   @OneToMany(() => PathModule, (m) => m.path)
   modules: Relation<PathModule>[];
 

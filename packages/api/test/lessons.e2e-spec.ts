@@ -189,7 +189,7 @@ describe('Lessons, quizzes, progress and streak (e2e)', () => {
       )
     ).map((r: { content_id: string }) => r.content_id);
 
-  it('deletes a path with its lesson content, videos, quiz and attempts', async () => {
+  it('deletes a draft with its lesson content, videos, quiz and attempts', async () => {
     const u = await newUser();
     const path = await u.activePath();
     const lessonId = path.modules[0].lessons[0].id;
@@ -209,6 +209,8 @@ describe('Lessons, quizzes, progress and streak (e2e)', () => {
     expect(before.resources).toBeGreaterThan(0);
     expect((await u.get('/dashboard').expect(200)).body.totals.quizAttempts).toBe(1);
 
+    // An active original would only be hidden (copy-and-hide.e2e-spec.ts); a draft is deleted for real.
+    await ds.query(`UPDATE learning_paths SET status = 'draft' WHERE id = $1`, [path.id]);
     await u.del(`/learning-paths/${path.id}`).expect(204);
     expect(await leftovers(contentIds)).toEqual({ contents: 0, resources: 0, quizzes: 0, attempts: 0 });
     expect((await u.get('/dashboard').expect(200)).body.totals.quizAttempts).toBe(0);
