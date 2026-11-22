@@ -110,13 +110,12 @@ Scope change: `docs/PROJECT_SPEC.md` §2.2 lists "Public course catalog" out of 
   `ON DELETE SET NULL` as a backstop (account purge).
 - Copy guard: refuse (409 `ALREADY_LEARNING`, with the existing path id) when the caller already owns a visible
   lesson whose `content_id` is in the source's lessons — a learner never has two lessons on one content row.
-- Courses of soft-deleted accounts (`users.deleted_at IS NOT NULL`) are hidden from Community and can't be copied
-  (account deletion is a stronger privacy signal than deleting one course). Existing copies keep working.
+- Courses of soft-deleted accounts stay public and copyable (owner, 2026-11-23) — same rule as deleting a course.
 
 ### Search index (Typesense, owner's choice)
 - New docker-compose service `typesense` (pinned `typesense/typesense:<version>`, API key from env); env vars
   `TYPESENSE_URL`, `TYPESENSE_API_KEY` validated in `env.validation.ts`; client: the official `typesense` npm package.
-- Collection `community_paths`, one document per **public** path (active, original, owner not soft-deleted):
+- Collection `community_paths`, one document per **public** path (active, original):
   `id, title, summary, tags[] (facet), category_id (facet), category_name, level (facet), lesson_count, copies
   (int, sort), created_at (int, sort)`. No author, no goal. Search fields `title, tags, summary` (weighted in that
   order); Typesense's typo tolerance and diacritic handling cover "nau an" → "Nấu ăn" (verify in a test).
@@ -124,7 +123,7 @@ Scope change: `docs/PROJECT_SPEC.md` §2.2 lists "Public course catalog" out of 
   DLQ) carries `{ pathId }`. Its consumer reads the path from Postgres and **upserts** the document if the path is
   public, otherwise **deletes** it — idempotent and order-independent, so duplicate/late messages are harmless.
   Published after the DB commit on: path activated (`start`), category/tags set (generation, backfill), copy made
-  (source's `copies` changed), account soft-deleted (one message per path of that user). Hiding does not change
+  (source's `copies` changed). Hiding does not change
   public state, so no message.
 - Losing a message (broker down at publish) leaves the index stale; `pnpm search:reindex` rebuilds the collection
   from Postgres (also used for first deploy). shortcut: no automatic sweeper; add one if staleness shows up.
@@ -179,8 +178,8 @@ Every response is anonymous: never `userId`, author, `conversationId`, `preferen
 - Generation: two concurrent jobs for two learners' lessons on one content row → exactly one model call, both jobs
   succeed; stale claim is taken over; model failure releases the claim. Same for quiz.
 - Delete: deleting an active original only hides it (still listed, content intact, owner can resume via "Học khoá
-  này" with old progress); deleting a copy or draft removes it and unreferenced content rows. A deleted account's
-  courses disappear from Community (index message sent).
+  này" with old progress); deleting a copy or draft removes it and unreferenced content rows.
+  A deleted account's courses stay listed.
 - Search index: consumer upserts public / deletes non-public docs; duplicate messages harmless; reindex script
   rebuilds; accent-insensitive search works against a real Typesense (e2e, docker-compose service).
 - Copy guard: copying a course whose content the caller already learns → 409 `ALREADY_LEARNING`.
@@ -193,7 +192,6 @@ Every response is anonymous: never `userId`, author, `conversationId`, `preferen
 - Copies drop the original's `goal` (privacy). Lesson prompts no longer use the goal for anyone (owner's choice).
 - Hidden original reappears for its owner in Community; "Học khoá này" restores it with old progress.
 - Indexing via its own RabbitMQ queue (not `ai.jobs`), reindex script instead of a sweeper.
-- Courses of deleted accounts are hidden from Community.
 - No opt-out toggle (owner: "public automatically").
 - Waiting job gives up after 4 min (`LESSON_BUSY`), stale claim after 3 min.
 - Fixed page size 50, no cursor yet.
