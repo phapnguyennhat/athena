@@ -189,7 +189,8 @@ export class LearningPathsService {
 
   /**
    * An active original is only hidden (it stays public in Community, progress kept). A copy or a draft is deleted
-   * with its modules, lessons, progress and the content no other lesson uses. Learning days stay.
+   * with its modules, lessons, progress, the caller's quiz attempts on it and the content no other lesson uses.
+   * Learning days stay.
    */
   async remove(userId: string, id: string): Promise<void> {
     const { affected, sourcePathId } = await this.ds.transaction(async (m) => {
@@ -200,6 +201,14 @@ export class LearningPathsService {
       );
       if (hidden.affected) return { affected: hidden.affected, sourcePathId: null };
       const path = await m.findOneBy(LearningPathEntity, { id, userId, hiddenAt: IsNull() });
+      // Attempts hang off the content, which a copy shares with its source. The copy guard means no other lesson of
+      // this user uses these rows.
+      if (path)
+        await m.query(
+          `DELETE FROM quiz_attempts a USING quizzes q
+           WHERE a.quiz_id = q.id AND a.user_id = $1 AND q.content_id = ANY($2)`,
+          [userId, await contentIdsOf(m, [id])],
+        );
       return { affected: await deletePaths(m, { id, userId, hiddenAt: IsNull() }), sourcePathId: path?.sourcePathId };
     });
     if (!affected) throw notFound();

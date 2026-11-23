@@ -17,7 +17,8 @@ const MODULES = [
   { title: 'Nâng cao', lessons: [{ title: 'JOIN' }] },
 ];
 
-describe('Copying courses and hiding deleted originals (e2e)', () => {
+// Sign-ups hash passwords; several per test exceed the 5 s default on a loaded machine.
+describe('Copying courses and hiding deleted originals (e2e)', { timeout: 30_000 }, () => {
   let app: INestApplication<App>;
   let http: ReturnType<typeof request>;
   let ds: DataSource;
@@ -52,6 +53,7 @@ describe('Copying courses and hiding deleted originals (e2e)', () => {
       id,
       get: (url: string) => http.get(url).set(auth),
       del: (url: string) => http.delete(url).set(auth),
+      post: (url: string, body?: object) => http.post(url).set(auth).send(body),
     };
   }
 
@@ -88,6 +90,14 @@ describe('Copying courses and hiding deleted originals (e2e)', () => {
   const row = async (id: string) => (await ds.query(`SELECT * FROM learning_paths WHERE id = $1`, [id]))[0];
   const contentsExist = async (ids: string[]) =>
     (await ds.query(`SELECT count(*)::int AS n FROM lesson_contents WHERE id = ANY($1)`, [ids]))[0].n;
+  /** A one-question quiz on a content row; the answer is option 0. */
+  const makeQuiz = async (contentId: string): Promise<string> =>
+    (
+      await ds.query(`INSERT INTO quizzes (content_id, questions) VALUES ($1, $2::jsonb) RETURNING id`, [
+        contentId,
+        JSON.stringify([{ prompt: 'Q', options: ['a', 'b'], answer: 0, explanation: 'E' }]),
+      ])
+    )[0].id;
   const status = (p: Promise<unknown>) =>
     p.then(
       () => 200,
@@ -176,5 +186,33 @@ describe('Copying courses and hiding deleted originals (e2e)', () => {
     await a.del(`/learning-paths/${draft}`).expect(204);
     expect(await row(draft)).toBeUndefined();
     expect(await contentsExist(own)).toBe(0);
+  });
+
+  it("deleting a copy deletes the learner's quiz attempts on it", async () => {
+    const [a, b] = [await newUser(), await newUser()];
+    const src = await makePath(a.id);
+    const { id: copyB } = await community.copy(b.id, src);
+    const [lb] = await lessons(copyB);
+    const quiz = await makeQuiz(lb.content_id);
+    await b.post(`/quizzes/${quiz}/attempts`, { answers: [0] }).expect(201);
+    expect((await b.get('/dashboard').expect(200)).body.totals.quizAttempts).toBe(1);
+
+    await b.del(`/learning-paths/${copyB}`).expect(204);
+    expect((await b.get('/dashboard').expect(200)).body.totals.quizAttempts).toBe(0);
+    const { id: again } = await community.copy(b.id, src);
+    const [lb2] = await lessons(again);
+    expect((await b.get(`/lessons/${lb2.id}`).expect(200)).body.quiz).toMatchObject({ id: quiz, lastAttempt: null });
+    expect((await b.get(`/lessons/${lb2.id}/quiz`).expect(200)).body).toMatchObject({ attempts: 0, best: null });
+  });
+
+  it('a hidden original cannot be started or have its quizzes submitted', async () => {
+    const a = await newUser();
+    const src = await makePath(a.id);
+    const [la] = await lessons(src);
+    const quiz = await makeQuiz(la.content_id);
+    await a.del(`/learning-paths/${src}`).expect(204);
+    await a.post(`/learning-paths/${src}/start`, {}).expect(404);
+    const res = await a.post(`/quizzes/${quiz}/attempts`, { answers: [0] }).expect(404);
+    expect(res.body.code).toBe('QUIZ_NOT_FOUND');
   });
 });
