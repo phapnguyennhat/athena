@@ -24,7 +24,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
       <ScrollView
-        contentContainerClassName="gap-7 pb-32"
+        contentContainerClassName="gap-7 pb-6"
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => (refresh(), suggestions.reload())} />}>
         <View className="mr-2 ml-5 flex-row items-center justify-between">
@@ -83,12 +83,6 @@ export default function HomeScreen() {
               </View>
               <CourseRail courses={suggestions.data} onOpen={(id) => router.push(`/community/${id}`)} />
             </View>
-          ) : null}
-          {data ? (
-            <Text className="text-[13px] leading-5 text-ink-muted">
-              Đã học {data.totals.completedLessons} bài · {data.totals.quizAttempts} lần làm bài kiểm tra · Kỷ lục{' '}
-              {data.streak.longest} ngày
-            </Text>
           ) : null}
         </View>
       </ScrollView>
