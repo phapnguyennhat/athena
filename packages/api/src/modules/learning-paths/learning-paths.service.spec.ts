@@ -50,9 +50,16 @@ function setup(path: Partial<LearningPathEntity> | null) {
   const ds = {
     transaction: vi.fn((fn: (mgr: typeof m) => unknown) => fn(m)),
     query: vi.fn().mockResolvedValue([{ lesson_id: 'l2', status: 'completed' }]),
+    manager: { query: vi.fn().mockResolvedValue([{ id: 'l1', title: 'Một' }]) },
   };
+  const jobs = { enqueue: vi.fn().mockResolvedValue({}) };
   const repo = { findOne: vi.fn().mockResolvedValue(stored) };
-  return { m, repo, svc: new LearningPathsService(ds as never, repo as never, { publish: vi.fn() } as never) };
+  return {
+    m,
+    repo,
+    jobs,
+    svc: new LearningPathsService(ds as never, repo as never, { publish: vi.fn() } as never, jobs as never),
+  };
 }
 
 describe('LearningPathsService', () => {

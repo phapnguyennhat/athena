@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { forwardRef, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { AiJobsService } from '../ai-jobs/ai-jobs.service.js';
+import { orderedLessons } from '../lessons/lessons.service.js';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, IsNull, Repository, type FindOptionsWhere } from 'typeorm';
 import type { LearningPath } from './dto/learning-path.dto.js';
@@ -115,6 +117,7 @@ export class LearningPathsService {
     @InjectRepository(LearningPathEntity)
     private readonly paths: Repository<LearningPathEntity>,
     private readonly search: SearchIndexService,
+    @Inject(forwardRef(() => AiJobsService)) private readonly jobs: AiJobsService,
   ) {}
 
   async get(userId: string, id: string): Promise<LearningPathView> {
@@ -247,6 +250,9 @@ export class LearningPathsService {
         });
     });
     await this.search.publish(id);
+    // Generate lesson 1 up front: the learner opens it next, and its video becomes the course thumbnail.
+    const [first] = await orderedLessons(this.ds.manager, id);
+    if (first) await this.jobs.enqueue(userId, 'generate_lesson', { lessonId: first.id }).catch(() => undefined);
     return this.get(userId, id);
   }
 }

@@ -210,6 +210,12 @@ describe('Path generation (e2e)', () => {
     expect(path.tags).toEqual(['sql', 'cơ sở dữ liệu']);
     expect(path.isCopy).toBe(false);
     await u.startPath(done.resultId).expect(200);
+    // Starting queues the first lesson, so the course has content and a thumbnail before anyone opens it.
+    const [job] = await ds.query(
+      `SELECT input->>'lessonId' AS "lessonId" FROM ai_jobs WHERE type = 'generate_lesson' AND user_id = (SELECT user_id FROM learning_paths WHERE id = $1)`,
+      [done.resultId],
+    );
+    expect(job?.lessonId).toBe(path.modules[0].lessons[0].id);
     const { body: rows } = await u.list().expect(200);
     expect(rows[0]).toMatchObject({ id: done.resultId, category: path.category, tags: path.tags, isCopy: false });
   });

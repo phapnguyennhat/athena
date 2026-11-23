@@ -14,6 +14,8 @@ export type CommunityPath = {
   copies: number;
   /** The caller's copy of it, if any. */
   copiedPathId: string | null;
+  /** YouTube thumbnail of the course's first lesson video; null until that lesson is generated. */
+  thumbnailUrl: string | null;
 };
 export type CommunityPathDetail = CommunityPath & { modules: { title: string; lessons: { title: string }[] }[] };
 export type CommunityCategory = { id: string; name: string; count: number };

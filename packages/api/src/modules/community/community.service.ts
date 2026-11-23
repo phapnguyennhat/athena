@@ -22,7 +22,10 @@ const COLUMNS = `p.id, p.title, p.summary, p.category_id, c.name AS category_nam
   (SELECT count(*)::int FROM learning_paths cp WHERE cp.source_path_id = p.id) AS copies,
   CASE WHEN p.user_id = $1 AND p.hidden_at IS NULL THEN p.id
     ELSE (SELECT cp.id FROM learning_paths cp WHERE cp.source_path_id = p.id AND cp.user_id = $1 LIMIT 1)
-  END AS copied_path_id`;
+  END AS copied_path_id,
+  (SELECT r.thumbnail_url FROM path_modules m JOIN path_lessons l ON l.module_id = m.id
+     JOIN lesson_resources r ON r.content_id = l.content_id
+   WHERE m.path_id = p.id ORDER BY m.position, l.position, r.position LIMIT 1) AS thumbnail_url`;
 const FROM = 'FROM learning_paths p LEFT JOIN categories c ON c.id = p.category_id';
 /** The caller's own visible paths are not "community" to them; their hidden originals are. */
 const NOT_OWN_VISIBLE = 'NOT (p.user_id = $1 AND p.hidden_at IS NULL)';
@@ -41,6 +44,7 @@ type Row = {
   lesson_count: number;
   copies: number;
   copied_path_id: string | null;
+  thumbnail_url: string | null;
 };
 
 const toPath = (r: Row): CommunityPath => ({
@@ -54,6 +58,7 @@ const toPath = (r: Row): CommunityPath => ({
   lessonCount: r.lesson_count,
   copies: r.copies,
   copiedPathId: r.copied_path_id,
+  thumbnailUrl: r.thumbnail_url,
 });
 
 @Injectable()

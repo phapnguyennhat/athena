@@ -146,6 +146,7 @@ describe('Community API (e2e)', { timeout: 30_000 }, () => {
       lessonCount: 3,
       copies: 0,
       copiedPathId: null,
+      thumbnailUrl: null,
     });
     expect((body.items as Item[]).find((i) => i.id === p.l2)).toMatchObject({ copies: 1, copiedPathId: p.copy });
   });
@@ -193,6 +194,23 @@ describe('Community API (e2e)', { timeout: 30_000 }, () => {
       expect(res.body.code).toBe('COURSE_NOT_FOUND');
     }
     await http.get('/community/paths/not-a-uuid').set(b.auth).expect(400);
+  });
+
+  it("uses the first lesson's first video as the thumbnail", async () => {
+    expect((await http.get(`/community/paths/${p.l1}`).set(b.auth).expect(200)).body.thumbnailUrl).toBeNull();
+    const [first] = await ds.query(
+      `SELECT l.content_id FROM path_lessons l JOIN path_modules m ON m.id = l.module_id
+       WHERE m.path_id = $1 ORDER BY m.position, l.position LIMIT 1`,
+      [p.l1],
+    );
+    await ds.query(
+      `INSERT INTO lesson_resources (content_id, provider, external_id, title, thumbnail_url, position)
+       VALUES ($1, 'youtube', 'v2', 'B', 'https://i.ytimg.com/vi/v2/hq.jpg', 1),
+              ($1, 'youtube', 'v1', 'A', 'https://i.ytimg.com/vi/v1/hq.jpg', 0)`,
+      [first.content_id],
+    );
+    const { body } = await http.get(`/community/paths/${p.l1}`).set(b.auth).expect(200);
+    expect(body.thumbnailUrl).toBe('https://i.ytimg.com/vi/v1/hq.jpg');
   });
 
   it('copies with 201, then returns the same copy with 200', async () => {

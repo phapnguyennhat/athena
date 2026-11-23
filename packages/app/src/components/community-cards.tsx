@@ -1,3 +1,5 @@
+import { Image } from 'expo-image';
+
 import type { CommunityPath } from '@/lib/community-api';
 import { LEVEL_LABEL } from '@/lib/learning-paths-api';
 import { Pressable, ScrollView, Text, View } from '@/tw';
@@ -24,7 +26,11 @@ export function CourseCard({ course, onPress }: { course: CommunityPath; onPress
       onPress={onPress}
       className="w-44 overflow-hidden rounded-2xl border border-line bg-surface active:opacity-70">
       <View className="h-24 items-center justify-center bg-well">
-        <Text className="text-[40px] leading-[48px] font-black tracking-[-1px] text-tint-ink">{initials(course.category?.name)}</Text>
+        {course.thumbnailUrl ? (
+          <Image source={course.thumbnailUrl} style={{ width: '100%', height: '100%' }} contentFit="cover" transition={150} />
+        ) : (
+          <Text className="text-[40px] leading-[48px] font-black tracking-[-1px] text-tint-ink">{initials(course.category?.name)}</Text>
+        )}
       </View>
       <View className="gap-1 p-3.5">
         <Text className="text-[15px] leading-5 font-bold text-ink" numberOfLines={2}>
