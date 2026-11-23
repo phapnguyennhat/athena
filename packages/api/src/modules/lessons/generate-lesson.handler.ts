@@ -32,13 +32,14 @@ export class GenerateLessonHandler implements JobHandler {
       if (!live) throw new JobError('LESSON_NOT_FOUND');
       return !!live.content;
     };
-    if ((await claimOrWait(this.ds, row.id, 'generating_since', ready)) === 'ready') return lesson.id;
+    const claim = await claimOrWait(this.ds, row.id, 'generating_since', ready);
+    if (!claim) return lesson.id;
 
     try {
       return await this.generate(owned);
     } catch (e) {
       // Free the row so a retry or another learner can claim it.
-      await releaseClaim(this.ds, row.id, 'generating_since');
+      await releaseClaim(this.ds, row.id, 'generating_since', claim);
       throw e;
     }
   }

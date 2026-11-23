@@ -112,9 +112,10 @@
 - Dependency: `pnpm add typesense` in packages/api
 
 **Interfaces:**
-- Produces: `SEARCH_QUEUE = 'search.index'`, `SEARCH_DLQ = 'search.index.dlq'`, `searchConsumerOptions(url)` (prefetch 8), `SEARCH_CLIENT`
+- Produces: `SEARCH_QUEUE = 'search.index'`, `SEARCH_DLQ = 'search.index.dlq'`, `searchConsumerOptions(url)` (prefetch 1, built; was 8), `SEARCH_CLIENT`
 - Produces: `SearchIndexService.publish(pathId: string): Promise<void>` (never throws; logs on broker failure), `sync(pathId: string): Promise<'upserted' | 'deleted'>`, `ensureCollection(): Promise<void>` (on bootstrap), `reindexAll(): Promise<number>`, `search(params: { q?: string; categoryId?: string; tag?: string; limit: number }): Promise<{ ids: string[] }>`, `categoryFacets(): Promise<{ id: string; count: number }[]>`
 - Produces: collection `community_paths` fields `id, title, summary, tags (string[], facet), category_id (string, facet, optional), category_name (optional), level (facet), lesson_count (int32), copies (int32, sort), created_at (int64, sort)`; `query_by: title,tags,summary`, `query_by_weights: 4,2,1`
+  - Built: plus `title_plain`/`tags_plain` (đ→d; Typesense does not fold đ), so `query_by: title,tags,summary,title_plain,tags_plain`, `query_by_weights: 4,2,1,4,2`
 - Consumes: `PUBLIC_PATH` (Task 3)
 
 - [ ] **Step 1: Failing e2e** (`search-index.e2e-spec.ts`, real Typesense from compose, collection name suffixed per test run via env `TYPESENSE_COLLECTION` default `community_paths`):

@@ -185,6 +185,9 @@ describe('Community API (e2e)', { timeout: 30_000 }, () => {
       { title: 'M2', lessons: [{ title: 'C' }] },
     ]);
     anonymous(body);
+    // The owner opens their own visible course rather than copying it; a hidden one is offered for copying again.
+    expect((await http.get(`/community/paths/${p.l1}`).set(a.auth).expect(200)).body.copiedPathId).toBe(p.l1);
+    expect((await http.get(`/community/paths/${p.hidden}`).set(a.auth).expect(200)).body.copiedPathId).toBeNull();
     for (const id of [p.draft, p.copy, randomUUID()]) {
       const res = await http.get(`/community/paths/${id}`).set(b.auth).expect(404);
       expect(res.body.code).toBe('COURSE_NOT_FOUND');

@@ -200,4 +200,16 @@ describe('Typesense index of community courses (e2e)', { timeout: 30_000 }, () =
     }
     expect((await search.search({ tag: `stale-${run}`, limit: 10 })).ids).toEqual([]);
   });
+
+  // Last: it drops the collection.
+  it('recreates a missing collection on sync and search', async () => {
+    const a = await newUser();
+    const tag = `gone-${run}`;
+    const id = await makePath(a.id, { tags: [tag] });
+    await app.get<Client>(TYPESENSE).collections(COLLECTION).delete();
+    expect(await search.sync(id)).toBe('upserted');
+    expect((await search.search({ tag, limit: 10 })).ids).toEqual([id]);
+    await app.get<Client>(TYPESENSE).collections(COLLECTION).delete();
+    expect((await search.search({ tag, limit: 10 })).ids).toEqual([]);
+  });
 });

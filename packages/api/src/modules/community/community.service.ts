@@ -10,14 +10,19 @@ export { PUBLIC_PATH };
 const notFound = () =>
   new NotFoundException({ statusCode: 404, code: 'COURSE_NOT_FOUND', message: 'Course not found.' });
 
-/** Columns of a `CommunityPath` row (alias `p`); `$1` is the caller, for `copied_path_id`. */
+/**
+ * Columns of a `CommunityPath` row (alias `p`); `$1` is the caller, for `copied_path_id`: their copy, or the path
+ * itself when it is their own visible one (they open it rather than copy it).
+ */
 const COLUMNS = `p.id, p.title, p.summary, p.category_id, c.name AS category_name, p.tags,
   p.preferences->>'level' AS level,
   (SELECT count(*)::int FROM path_modules m WHERE m.path_id = p.id) AS module_count,
   (SELECT count(*)::int FROM path_lessons l JOIN path_modules m ON m.id = l.module_id WHERE m.path_id = p.id)
     AS lesson_count,
   (SELECT count(*)::int FROM learning_paths cp WHERE cp.source_path_id = p.id) AS copies,
-  (SELECT cp.id FROM learning_paths cp WHERE cp.source_path_id = p.id AND cp.user_id = $1 LIMIT 1) AS copied_path_id`;
+  CASE WHEN p.user_id = $1 AND p.hidden_at IS NULL THEN p.id
+    ELSE (SELECT cp.id FROM learning_paths cp WHERE cp.source_path_id = p.id AND cp.user_id = $1 LIMIT 1)
+  END AS copied_path_id`;
 const FROM = 'FROM learning_paths p LEFT JOIN categories c ON c.id = p.category_id';
 /** The caller's own visible paths are not "community" to them; their hidden originals are. */
 const NOT_OWN_VISIBLE = 'NOT (p.user_id = $1 AND p.hidden_at IS NULL)';

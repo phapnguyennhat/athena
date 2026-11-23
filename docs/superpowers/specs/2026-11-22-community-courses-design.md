@@ -119,6 +119,8 @@ Scope change: `docs/PROJECT_SPEC.md` §2.2 lists "Public course catalog" out of 
   `id, title, summary, tags[] (facet), category_id (facet), category_name, level (facet), lesson_count, copies
   (int, sort), created_at (int, sort)`. No author, no goal. Search fields `title, tags, summary` (weighted in that
   order); Typesense's typo tolerance and diacritic handling cover "nau an" → "Nấu ăn" (verify in a test).
+  Built: Typesense does not fold đ, so the documents also carry `title_plain`/`tags_plain` (đ→d) and search
+  queries `title,tags,summary,title_plain,tags_plain` with weights `4,2,1,4,2`.
 - **Indexing is asynchronous**: a dedicated RabbitMQ queue `search.index` (separate from `ai.jobs`, durable, own
   DLQ) carries `{ pathId }`. Its consumer reads the path from Postgres and **upserts** the document if the path is
   public, otherwise **deletes** it — idempotent and order-independent, so duplicate/late messages are harmless.

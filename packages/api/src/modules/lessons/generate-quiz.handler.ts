@@ -27,7 +27,8 @@ export class GenerateQuizHandler implements JobHandler {
     const contentId = row.id;
     const repo = this.ds.getRepository(Quiz);
     const ready = async () => !!(await repo.existsBy({ contentId }));
-    if ((await claimOrWait(this.ds, contentId, 'quiz_generating_since', ready)) === 'claimed') {
+    const claim = await claimOrWait(this.ds, contentId, 'quiz_generating_since', ready);
+    if (claim) {
       try {
         const { questions } = await this.ai.quiz({
           language: path.contentLanguage,
@@ -41,7 +42,7 @@ export class GenerateQuizHandler implements JobHandler {
           await m.update(LessonContentEntity, contentId, { quizGeneratingSince: null });
         });
       } catch (e) {
-        await releaseClaim(this.ds, contentId, 'quiz_generating_since');
+        await releaseClaim(this.ds, contentId, 'quiz_generating_since', claim);
         if ((e as { driverError?: { code?: string } }).driverError?.code === '23503')
           throw new JobError('LESSON_NOT_FOUND');
         throw e;

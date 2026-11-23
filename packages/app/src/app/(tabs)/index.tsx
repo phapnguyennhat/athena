@@ -70,23 +70,26 @@ export default function HomeScreen() {
                   onPath={(id) => router.push(`/paths/${id}`)}
                 />
               )}
-              {suggestions.data?.length ? (
-                <View className="-mx-5 gap-3">
-                  <View className="mx-5 flex-row items-baseline justify-between">
-                    <SectionTitle>Gợi ý cho bạn</SectionTitle>
-                    <Pressable accessibilityRole="link" hitSlop={8} onPress={() => router.push('/community')} className="active:opacity-70">
-                      <Text className="text-[15px] font-bold text-tint-ink">Xem tất cả</Text>
-                    </Pressable>
-                  </View>
-                  <CourseRail courses={suggestions.data} onOpen={(id) => router.push(`/community/${id}`)} />
-                </View>
-              ) : null}
-              <Text className="text-[13px] leading-5 text-ink-muted">
-                Đã học {data.totals.completedLessons} bài · {data.totals.quizAttempts} lần làm bài kiểm tra · Kỷ lục{' '}
-                {data.streak.longest} ngày
-              </Text>
             </>
           )}
+          {/* Outside the dashboard branch: suggestions load on their own, so they show even if the dashboard fails. */}
+          {suggestions.data?.length ? (
+            <View className="-mx-5 gap-3">
+              <View className="mx-5 flex-row items-baseline justify-between">
+                <SectionTitle>Gợi ý cho bạn</SectionTitle>
+                <Pressable accessibilityRole="link" hitSlop={8} onPress={() => router.push('/community')} className="active:opacity-70">
+                  <Text className="text-[15px] font-bold text-tint-ink">Xem tất cả</Text>
+                </Pressable>
+              </View>
+              <CourseRail courses={suggestions.data} onOpen={(id) => router.push(`/community/${id}`)} />
+            </View>
+          ) : null}
+          {data ? (
+            <Text className="text-[13px] leading-5 text-ink-muted">
+              Đã học {data.totals.completedLessons} bài · {data.totals.quizAttempts} lần làm bài kiểm tra · Kỷ lục{' '}
+              {data.streak.longest} ngày
+            </Text>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>

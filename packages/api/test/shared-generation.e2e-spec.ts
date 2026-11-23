@@ -13,6 +13,7 @@ import { AiError } from '../src/modules/learning-paths/ai-output.js';
 import { PathConversation } from '../src/modules/learning-paths/entities/path-conversation.entity.js';
 import { PathAi } from '../src/modules/learning-paths/path-ai.js';
 import type { LessonInput, LessonOutput, QuizInput, QuizOutput } from '../src/modules/lessons/lesson-output.js';
+import { claimOrWait, releaseClaim } from '../src/modules/lessons/content-claim.js';
 import { User } from '../src/modules/users/user.entity.js';
 import { FakePathAi } from './fake-path-ai.js';
 
@@ -169,6 +170,23 @@ describe('Shared lesson content is generated once (e2e)', () => {
     const job = await u.settle((await u.post(`/lessons/${lessonId}/generate-content`).expect(202)).body.id);
     expect(job).toMatchObject({ status: 'failed', errorCode: 'AI_UNAVAILABLE' });
     expect((await claims(contentId)).generating_since).toBeNull();
+  }, 20_000);
+
+  it("a stale holder's release keeps the newer claim", async () => {
+    const u = await newUser();
+    const lessonId = await u.firstLesson();
+    const [{ content_id: contentId }] = await ds.query(`SELECT content_id FROM path_lessons WHERE id = $1`, [lessonId]);
+    for (const column of ['generating_since', 'quiz_generating_since'] as const) {
+      const ready = async () => false;
+      // staleMs 0: the second claim takes the first over.
+      const first = await claimOrWait(ds, contentId, column, ready, { staleMs: 0 });
+      const second = await claimOrWait(ds, contentId, column, ready, { staleMs: 0 });
+      expect(first).not.toBe(second);
+      await releaseClaim(ds, contentId, column, first!);
+      expect((await claims(contentId))[column]).not.toBeNull();
+      await releaseClaim(ds, contentId, column, second!);
+      expect((await claims(contentId))[column]).toBeNull();
+    }
   }, 20_000);
 
   it('lesson input carries no goal', async () => {

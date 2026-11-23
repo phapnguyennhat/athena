@@ -1,3 +1,4 @@
 // Own file: the search index needs it, and community.service imports the search module (no import cycle).
 /** SQL condition (alias `p`) for a path anyone can see and copy: an active original. Hidden originals stay public. */
+// A hard-purged original sets its copies' source_path_id to NULL (FK ON DELETE SET NULL), so they match this too.
 export const PUBLIC_PATH = "p.status = 'active' AND p.source_path_id IS NULL";

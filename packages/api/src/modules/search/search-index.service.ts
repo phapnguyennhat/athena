@@ -83,7 +83,7 @@ export class SearchIndexService implements OnApplicationBootstrap {
   async sync(pathId: string): Promise<'upserted' | 'deleted'> {
     const [doc] = await this.docs(pathId);
     if (doc) {
-      await this.documents().upsert(doc);
+      await this.withCollection(() => this.documents().upsert(doc));
       return 'upserted';
     }
     try {
@@ -122,27 +122,42 @@ export class SearchIndexService implements OnApplicationBootstrap {
       params.categoryId && `category_id:=\`${params.categoryId.replace(/`/g, '')}\``,
       params.tag && `tags:=\`${params.tag.replace(/`/g, '')}\``,
     ].filter(Boolean);
-    const res = await this.documents().search({
-      q: params.q?.trim() || '*',
-      query_by: 'title,tags,summary,title_plain,tags_plain',
-      query_by_weights: '4,2,1,4,2',
-      filter_by: filters.join(' && ') || undefined,
-      sort_by: 'copies:desc,created_at:desc',
-      per_page: params.limit,
-      include_fields: 'id',
-    });
+    const res = await this.withCollection(() =>
+      this.documents().search({
+        q: params.q?.trim() || '*',
+        query_by: 'title,tags,summary,title_plain,tags_plain',
+        query_by_weights: '4,2,1,4,2',
+        filter_by: filters.join(' && ') || undefined,
+        sort_by: 'copies:desc,created_at:desc',
+        per_page: params.limit,
+        include_fields: 'id',
+      }),
+    );
     return { ids: (res.hits ?? []).map((h) => h.document.id) };
   }
 
   async categoryFacets(): Promise<{ id: string; count: number }[]> {
-    const res = await this.documents().search({
-      q: '*',
-      query_by: 'title',
-      facet_by: 'category_id',
-      max_facet_values: 100,
-      per_page: 0,
-    });
+    const res = await this.withCollection(() =>
+      this.documents().search({
+        q: '*',
+        query_by: 'title',
+        facet_by: 'category_id',
+        max_facet_values: 100,
+        per_page: 0,
+      }),
+    );
     return (res.facet_counts?.[0]?.counts ?? []).map((c) => ({ id: c.value, count: c.count }));
+  }
+
+  /** Runs `fn`, creating the collection and retrying once if it is missing (Typesense was down at boot). */
+  private async withCollection<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!(e instanceof Errors.ObjectNotFound)) throw e;
+      await this.ensureCollection();
+      return fn();
+    }
   }
 
   private documents() {

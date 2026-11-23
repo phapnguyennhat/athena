@@ -15,8 +15,9 @@ export const searchQueue = (url: string) => ({
   },
 });
 
-/** Server-side options for `connectMicroservice` (manual ack, prefetch 8). */
-export const searchConsumerOptions = (url: string) => ({ ...searchQueue(url), noAck: false, prefetchCount: 8 });
+/** Server-side options for `connectMicroservice` (manual ack). */
+// Prefetch 1: two syncs of one path running at once could finish out of order and write a stale `copies`.
+export const searchConsumerOptions = (url: string) => ({ ...searchQueue(url), noAck: false, prefetchCount: 1 });
 
 export const typesenseClient = (url: string, apiKey: string) =>
   new Client({ nodes: [{ url }], apiKey, connectionTimeoutSeconds: 5 });
