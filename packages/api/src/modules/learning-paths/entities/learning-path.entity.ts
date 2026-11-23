@@ -12,6 +12,8 @@ import {
 import { User } from '../../users/user.entity.js';
 import { Category } from './category.entity.js';
 import type { Preferences } from '../dto/learning-path.dto.js';
+
+export type ScopeArea = { area: string; covered: boolean };
 import { PathConversation } from './path-conversation.entity.js';
 import { PathModule } from './path-module.entity.js';
 
@@ -73,6 +75,10 @@ export class LearningPathEntity {
   /** Set when the owner deletes an active original: gone for them, still public in Community. */
   @Column({ name: 'hidden_at', type: 'timestamptz', nullable: true })
   hiddenAt: Date | null;
+
+  /** Knowledge areas a comprehensive course teaches, planned at generation; null for courses made before it. */
+  @Column({ type: 'jsonb', nullable: true })
+  scope: ScopeArea[] | null;
 
   /** On a family's root: the AI judged the outline comprehensive, so no more chapters are added. */
   @Column({ name: 'outline_complete', type: 'boolean', default: false })

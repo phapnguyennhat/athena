@@ -209,6 +209,14 @@ describe('Path generation (e2e)', () => {
     expect(path.category).toEqual({ id: expect.any(String), name: 'Lập trình' });
     expect(path.tags).toEqual(['sql', 'cơ sở dữ liệu']);
     expect(path.isCopy).toBe(false);
+    // The fake plans 4 areas; its 3 modules teach the first 3.
+    const [{ scope }] = await ds.query(`SELECT scope FROM learning_paths WHERE id = $1`, [done.resultId]);
+    expect(scope).toEqual([
+      { area: 'Nền tảng', covered: true },
+      { area: 'Thực hành cơ bản', covered: true },
+      { area: 'Áp dụng vào dự án', covered: true },
+      { area: 'Nâng cao', covered: false },
+    ]);
     await u.startPath(done.resultId).expect(200);
     // Starting queues the first lesson, so the course has content and a thumbnail before anyone opens it.
     const [job] = await ds.query(

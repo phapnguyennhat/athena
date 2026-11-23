@@ -70,7 +70,8 @@ export class GeminiPathAi extends PathAi {
       await this.call(JSON.stringify({ ...p, categories }), {
         systemInstruction: GENERATE_SYSTEM,
         temperature: 0.6,
-        maxOutputTokens: 2000,
+        // The scope plan adds up to 20 short areas to the outline.
+        maxOutputTokens: 3000,
         thinkingConfig: NO_THINKING,
         responseSchema: PATH_SCHEMA,
       }),

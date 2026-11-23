@@ -32,9 +32,16 @@ export class FakePathAi extends PathAi {
   async extend(input: ExtendInput): Promise<ExtendOutput> {
     if (this.extendComplete) return { complete: true, modules: [] };
     const n = input.modules.length + 1;
+    const next = input.scope?.findIndex((a) => !a.covered) ?? -1;
     return {
       complete: false,
-      modules: [{ title: `Mở rộng ${n}`, lessons: [{ title: `Bài ${n}.1` }, { title: `Bài ${n}.2` }] }],
+      modules: [
+        {
+          title: `Mở rộng ${n}`,
+          lessons: [{ title: `Bài ${n}.1` }, { title: `Bài ${n}.2` }],
+          covers: next >= 0 ? [next] : [],
+        },
+      ],
     };
   }
 
@@ -92,6 +99,7 @@ export class FakePathAi extends PathAi {
     const lessonsPerModule = 4;
     const modules = ['Nền tảng', 'Thực hành cơ bản', 'Áp dụng vào dự án'].map((name, m) => ({
       title: name,
+      covers: [m],
       lessons: Array.from({ length: lessonsPerModule }, (_, i) => ({
         title: `${topic}: ${name.toLowerCase()} (bài ${m * lessonsPerModule + i + 1})`,
       })),
@@ -100,6 +108,7 @@ export class FakePathAi extends PathAi {
       ...(await this.categorize()),
       language: 'vi',
       title: `${topic} cho người ${p.level === 'beginner' ? 'mới bắt đầu' : p.level === 'advanced' ? 'đã có nền tảng vững' : 'đã biết cơ bản'}`,
+      scope: ['Nền tảng', 'Thực hành cơ bản', 'Áp dụng vào dự án', 'Nâng cao'],
       summary: `${modules.length} module${p.goal ? `, hướng tới: ${p.goal}` : ''}. Nội dung mẫu, chưa do AI soạn.`,
       modules,
     };

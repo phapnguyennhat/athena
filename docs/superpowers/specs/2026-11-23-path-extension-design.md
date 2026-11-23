@@ -32,3 +32,13 @@ Approved by the owner 2026-11-23 (approach 1: append to every family path; not a
 ## Non-goals
 Manual "generate more" button; notifying other family members (they see new chapters on next load); editing or
 reordering extended chapters; resizing the initial outline (still 3–8 modules).
+
+## Scope plan (owner, 2026-11-23)
+- Generation also returns `scope`: every knowledge area a comprehensive course needs (narrow skill 4–6, tool or
+  language 8–14, whole field 14–20), prerequisites first. The first modules teach roughly the first third; each
+  module lists `covers` (scope indices). Stored on the path as `scope jsonb` = `[{ area, covered }]`.
+- Extension sends the scope; the model writes the next modules for the earliest uncovered areas and tags `covers`.
+  The server marks areas covered and sets `outline_complete` when every area is taught — completeness is no longer
+  the model's judgement. A fully covered plan closes the outline without a model call.
+- Courses made before this (no scope) keep the earlier behaviour (model judges completeness).
+- Context size: worst case 20 modules × 6 lesson titles + 20 areas ≈ 4–5k input tokens, far below the model limit.

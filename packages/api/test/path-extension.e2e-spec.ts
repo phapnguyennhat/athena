@@ -18,8 +18,10 @@ import { FakePathAi } from './fake-path-ai.js';
 
 class CountingAi extends FakePathAi {
   extendCalls = 0;
+  lastExtendInput?: ExtendInput;
   override async extend(input: ExtendInput): Promise<ExtendOutput> {
     this.extendCalls++;
+    this.lastExtendInput = input;
     await new Promise((r) => setTimeout(r, 300));
     return super.extend(input);
   }
@@ -169,6 +171,44 @@ describe('Path extension (e2e)', { timeout: 60_000 }, () => {
     await a.complete(ids[1]).expect(200);
     await settle(root);
     expect(ai.extendCalls).toBe(1);
+  });
+
+  it('with a scope, covers the uncovered areas and completes once all are taught', async () => {
+    const a = await newUser();
+    const root = await makePath(a.id);
+    await ds.query(`UPDATE learning_paths SET scope = $2 WHERE id = $1`, [
+      root,
+      JSON.stringify([
+        { area: 'Nền tảng', covered: true },
+        { area: 'Truy vấn', covered: true },
+        { area: 'Tối ưu', covered: false },
+      ]),
+    ]);
+    await a.complete((await lessonIds(a, root))[0]).expect(200);
+    await settle(root);
+    expect(ai.extendCalls).toBe(1);
+    expect(ai.lastExtendInput?.scope).toEqual([
+      { area: 'Nền tảng', covered: true },
+      { area: 'Truy vấn', covered: true },
+      { area: 'Tối ưu', covered: false },
+    ]);
+    const { body } = await a.path(root).expect(200);
+    expect(body.modules).toHaveLength(3);
+    // Every area is taught now: the server closes the outline, no model judgement needed.
+    expect(body.extension).toBe('complete');
+  });
+
+  it('closes a fully covered outline without calling the model', async () => {
+    const a = await newUser();
+    const root = await makePath(a.id);
+    await ds.query(`UPDATE learning_paths SET scope = $2 WHERE id = $1`, [
+      root,
+      JSON.stringify([{ area: 'Nền tảng', covered: true }]),
+    ]);
+    await jobs.enqueue(a.id, 'extend_path', { rootId: root, afterModules: 2 });
+    await settle(root);
+    expect(ai.extendCalls).toBe(0);
+    expect((await a.path(root).expect(200)).body.extension).toBe('complete');
   });
 
   it('does not extend while more than two lessons remain', async () => {

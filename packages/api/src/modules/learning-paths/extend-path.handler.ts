@@ -5,6 +5,7 @@ import { JobError, type JobHandler } from '../ai-jobs/job-handlers.js';
 import { LessonContentEntity } from '../lessons/entities/lesson-content.entity.js';
 import { SearchIndexService } from '../search/search-index.service.js';
 import { validateExtendOutput } from './ai-output.js';
+import type { ScopeArea } from './entities/learning-path.entity.js';
 import { PathAi } from './path-ai.js';
 
 /** Safety cap: a family stops growing at this many chapters even if the model never says "complete". */
@@ -27,7 +28,7 @@ export class ExtendPathHandler implements JobHandler {
   async run(job: AiJob): Promise<string> {
     const { rootId, afterModules } = job.input as { rootId: string; afterModules: number };
     const [root] = await this.ds.query(
-      `SELECT title, content_language, preferences->>'level' AS level, outline_complete FROM learning_paths WHERE id = $1`,
+      `SELECT title, content_language, preferences->>'level' AS level, outline_complete, scope FROM learning_paths WHERE id = $1`,
       [rootId],
     );
     if (!root) throw new JobError('PATH_NOT_FOUND');
@@ -38,6 +39,12 @@ export class ExtendPathHandler implements JobHandler {
       [rootId],
     );
     if (root.outline_complete || outline.length !== afterModules) return rootId;
+    const scope: ScopeArea[] | null = root.scope;
+    // Every planned area is taught: the course is complete, no model call needed.
+    if (scope?.every((a) => a.covered)) {
+      await this.ds.query(`UPDATE learning_paths SET outline_complete = true WHERE id = $1`, [rootId]);
+      return rootId;
+    }
 
     // Model call outside the transaction: never hold the root lock across it.
     const out = validateExtendOutput(
@@ -46,6 +53,7 @@ export class ExtendPathHandler implements JobHandler {
         level: root.level ?? undefined,
         title: root.title,
         modules: outline,
+        ...(scope && { scope }),
       }),
     );
 
@@ -88,8 +96,20 @@ export class ExtendPathHandler implements JobHandler {
           );
         }
       }
-      if (out.complete || n + modules.length >= MAX_MODULES)
-        await m.query(`UPDATE learning_paths SET outline_complete = true WHERE id = $1`, [rootId]);
+      // With a plan, "complete" is decided here (every area taught), not by the model's judgement.
+      const covered = scope?.map((a, i) => ({
+        ...a,
+        covered: a.covered || modules.some((mod) => mod.covers.includes(i)),
+      }));
+      const complete = covered ? covered.every((a) => a.covered) : out.complete;
+      await m.query(
+        `UPDATE learning_paths SET scope = coalesce($2::jsonb, scope), outline_complete = $3 WHERE id = $1`,
+        [
+          rootId,
+          covered ? JSON.stringify(covered) : null,
+          complete || !modules.length || n + modules.length >= MAX_MODULES,
+        ],
+      );
       return modules.length > 0;
     });
     if (grew) await this.search.publish(rootId); // lesson_count changed

@@ -47,6 +47,10 @@ export class GeneratePathHandler implements JobHandler {
           contentLanguage: out.language,
           categoryId,
           tags: out.tags,
+          // An area is covered when one of the first modules teaches it; extensions teach the rest.
+          scope: out.scope.length
+            ? out.scope.map((area, i) => ({ area, covered: out.modules.some((mod) => mod.covers.includes(i)) }))
+            : null,
         }),
       );
       await insertModules(m, path.id, out.modules);
