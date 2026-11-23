@@ -2,6 +2,7 @@ import { authFetch, ApiError } from '@/lib/api';
 
 // Mirrors the conversations, jobs and learning-paths controllers in packages/api.
 export type Level = 'beginner' | 'intermediate' | 'advanced';
+export const LEVEL_LABEL = { beginner: 'Cơ bản', intermediate: 'Trung cấp', advanced: 'Nâng cao' } as const;
 export type Preferences = { topic?: string; level?: Level; goal?: string };
 export type ChatMessage = { role: 'user' | 'assistant'; content: string; quickReplies: string[] | null };
 export type ChatReply = { reply: string; quickReplies: string[]; preferences: Preferences; ready: boolean };

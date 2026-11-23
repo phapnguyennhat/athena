@@ -210,7 +210,7 @@ describe('Path generation (e2e)', () => {
     expect(path.tags).toEqual(['sql', 'cơ sở dữ liệu']);
     await u.startPath(done.resultId).expect(200);
     const { body: rows } = await u.list().expect(200);
-    expect(rows[0]).toMatchObject({ id: done.resultId, category: path.category, tags: path.tags });
+    expect(rows[0]).toMatchObject({ id: done.resultId, category: path.category, tags: path.tags, isCopy: false });
   });
 
   it('creates a new category once and reuses it for later paths', async () => {

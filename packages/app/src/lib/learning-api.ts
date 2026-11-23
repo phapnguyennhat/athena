@@ -11,6 +11,8 @@ export type PathSummary = {
   total: number;
   next: { id: string; title: string } | null;
   lastActiveAt: string;
+  /** Copied from a Community course: deleting removes it (an original is only hidden from the learner). */
+  isCopy: boolean;
 };
 export type Dashboard = {
   streak: StreakView;

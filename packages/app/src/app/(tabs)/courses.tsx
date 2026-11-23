@@ -13,23 +13,30 @@ export default function CoursesScreen() {
   const router = useRouter();
   const { data, setData, error, reload, refreshing, refresh } = useLoad(listPaths);
 
+  // Listed paths are active: an original is only hidden (it stays in Community), a copy is deleted.
   const remove = (p: PathSummary) =>
-    Alert.alert('Xoá lộ trình?', `"${p.title}" cùng bài học, bài kiểm tra và tiến độ sẽ bị xoá. Chuỗi ngày học vẫn giữ nguyên.`, [
+    Alert.alert(
+      p.isCopy ? 'Xoá lộ trình?' : 'Ẩn khỏi khoá học của bạn?',
+      p.isCopy
+        ? `"${p.title}" cùng bài học, bài kiểm tra và tiến độ sẽ bị xoá. Chuỗi ngày học vẫn giữ nguyên.`
+        : 'Khoá học vẫn hiển thị trong Cộng đồng.',
+      [
       { text: 'Huỷ', style: 'cancel' },
       {
-        text: 'Xoá',
+        text: p.isCopy ? 'Xoá' : 'Ẩn',
         style: 'destructive',
         onPress: async () => {
           try {
             await deletePath(p.id);
             setData((list) => list?.filter((x) => x.id !== p.id) ?? null);
-            toast.info('Đã xoá lộ trình.');
+            toast.info(p.isCopy ? 'Đã xoá lộ trình.' : 'Đã ẩn khoá học.');
           } catch (e) {
             toast.fromError(e);
           }
         },
       },
-    ]);
+      ],
+    );
 
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>

@@ -40,6 +40,8 @@ export type PathSummary = {
   total: number;
   next: { id: string; title: string } | null;
   lastActiveAt: string;
+  /** Copied from a Community course (deleting it removes it; deleting an original only hides it). */
+  isCopy: boolean;
 };
 
 const notFound = () =>
@@ -164,7 +166,7 @@ export class LearningPathsService {
          JOIN path_lessons l ON l.module_id = m.id
          LEFT JOIN lesson_progress pr ON pr.lesson_id = l.id AND pr.user_id = $1
          WHERE p.user_id = $1 AND p.status = 'active' AND p.hidden_at IS NULL)
-       SELECT p.id, p.title, p.summary, p.tags,
+       SELECT p.id, p.title, p.summary, p.tags, p.source_path_id IS NOT NULL AS "isCopy",
          CASE WHEN c.id IS NULL THEN NULL ELSE json_build_object('id', c.id, 'name', c.name) END AS category,
          (SELECT count(*) FROM l WHERE l.path_id = p.id)::int AS total,
          (SELECT count(*) FROM l WHERE l.path_id = p.id AND l.status = 'completed')::int AS done,

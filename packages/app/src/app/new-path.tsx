@@ -15,6 +15,7 @@ import {
   sendMessage,
   startConversation,
   startPath,
+  LEVEL_LABEL,
   type ChatMessage,
   type ConversationView,
   type LearningPath,
@@ -29,7 +30,6 @@ type Step = 'loading' | 'chat' | 'generating' | 'review';
 /** An API error or a failed job's code; anything else (e.g. network) falls back to the generic copy. */
 type Failure = { status?: number; code?: string | null };
 
-const LEVEL_LABEL = { beginner: 'Cơ bản', intermediate: 'Trung cấp', advanced: 'Nâng cao' } as const;
 
 const currentConversation = async () => (await getCurrentConversation()) ?? (await startConversation());
 const toFailure = (e: unknown): Failure => (e instanceof ApiError ? e : {});

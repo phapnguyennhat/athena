@@ -143,6 +143,9 @@ describe('Copying courses and hiding deleted originals (e2e)', () => {
     const [la] = await lessons(src);
     await a.get(`/lessons/${la.id}`).expect(200);
     const { id: copyB } = await community.copy(b.id, src);
+    expect((await b.get('/learning-paths').expect(200)).body).toEqual([
+      expect.objectContaining({ id: copyB, isCopy: true }),
+    ]);
 
     await a.del(`/learning-paths/${src}`).expect(204);
     expect((await a.get('/learning-paths').expect(200)).body.map((p: { id: string }) => p.id)).not.toContain(src);
