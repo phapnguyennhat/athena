@@ -208,6 +208,7 @@ describe('Path generation (e2e)', () => {
     // The fake answers "Lập Trình": matched by slug, the seeded name is kept.
     expect(path.category).toEqual({ id: expect.any(String), name: 'Lập trình' });
     expect(path.tags).toEqual(['sql', 'cơ sở dữ liệu']);
+    expect(path.isCopy).toBe(false);
     await u.startPath(done.resultId).expect(200);
     const { body: rows } = await u.list().expect(200);
     expect(rows[0]).toMatchObject({ id: done.resultId, category: path.category, tags: path.tags, isCopy: false });

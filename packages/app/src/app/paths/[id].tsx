@@ -20,16 +20,23 @@ export default function PathScreen() {
   const router = useRouter();
   const { data: path, error, reload, refreshing, refresh } = useLoad(() => getPath(id));
 
+  // An active original is only hidden (it stays in Community); a copy or a draft is deleted.
+  const hides = path?.status === 'active' && !path.isCopy;
   const remove = () =>
-    Alert.alert('Xoá lộ trình?', 'Bài học, bài kiểm tra và tiến độ của lộ trình này sẽ bị xoá. Chuỗi ngày học vẫn giữ nguyên.', [
+    Alert.alert(
+      hides ? 'Ẩn khỏi khoá học của bạn?' : 'Xoá lộ trình?',
+      hides
+        ? 'Khoá học vẫn hiển thị trong Cộng đồng.'
+        : 'Bài học, bài kiểm tra và tiến độ của lộ trình này sẽ bị xoá. Chuỗi ngày học vẫn giữ nguyên.',
+      [
       { text: 'Huỷ', style: 'cancel' },
       {
-        text: 'Xoá',
+        text: hides ? 'Ẩn' : 'Xoá',
         style: 'destructive',
         onPress: async () => {
           try {
             await deletePath(id);
-            toast.info('Đã xoá lộ trình.');
+            toast.info(hides ? 'Đã ẩn khoá học.' : 'Đã xoá lộ trình.');
             if (router.canGoBack()) router.back();
             else router.replace('/courses');
           } catch (e) {
@@ -37,7 +44,8 @@ export default function PathScreen() {
           }
         },
       },
-    ]);
+      ],
+    );
 
   // The first unfinished lesson in learning order is where "Học tiếp" goes.
   const next = path?.modules.flatMap((m) => m.lessons).find((l) => l.status !== 'completed');
@@ -46,7 +54,7 @@ export default function PathScreen() {
     <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
       <ScreenHeader
         title={path?.title ?? 'Lộ trình'}
-        right={path ? <IconButton name={{ ios: 'trash', android: 'delete', web: 'delete' }} label="Xoá lộ trình" onPress={remove} /> : null}
+        right={path ? <IconButton name={{ ios: 'trash', android: 'delete', web: 'delete' }} label={hides ? 'Ẩn khoá học' : 'Xoá lộ trình'} onPress={remove} /> : null}
       />
       {!path ? (
         error ? <Retry onPress={reload} /> : <PathSkeleton />

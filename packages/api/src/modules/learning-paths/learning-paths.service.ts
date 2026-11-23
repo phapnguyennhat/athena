@@ -21,6 +21,8 @@ export type LearningPathView = {
   summary: string;
   category: PathCategory | null;
   tags: string[];
+  /** Copied from a Community course. Deleting an active original only hides it. */
+  isCopy: boolean;
   progress: { done: number; total: number };
   modules: {
     id: string;
@@ -145,6 +147,7 @@ export class LearningPathsService {
       summary: path.summary,
       category: path.category ? { id: path.category.id, name: path.category.name } : null,
       tags: path.tags,
+      isCopy: Boolean(path.sourcePathId),
       progress: {
         done: lessons.filter((l) => l.status === 'completed').length,
         total: lessons.length,

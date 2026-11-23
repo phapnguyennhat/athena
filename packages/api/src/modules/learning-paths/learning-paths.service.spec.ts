@@ -65,6 +65,7 @@ describe('LearningPathsService', () => {
       summary: 'Tóm tắt',
       category: { id: 'cat1', name: 'Lập trình' },
       tags: ['sql'],
+      isCopy: false,
       progress: { done: 1, total: 3 },
       modules: [
         {

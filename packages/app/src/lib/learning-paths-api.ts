@@ -23,6 +23,8 @@ export type LearningPath = {
   status: 'draft' | 'active';
   title: string;
   summary: string;
+  /** Copied from a Community course. Deleting an active original only hides it. */
+  isCopy: boolean;
   progress: { done: number; total: number };
   modules: { id: string; title: string; lessons: { id: string; title: string; status: LessonStatus }[] }[];
 };
