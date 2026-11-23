@@ -20,7 +20,7 @@ function parseLevel(text: string): Level | undefined {
   if (/nâng cao|advanced/.test(t)) return 'advanced';
 }
 
-/** Test-only fake of PathAi (no model, no network): deterministic slot filling: topic, then level, then an optional goal. */
+/** Test-only fake of PathAi (no model, no network): deterministic slot filling: topic, then level. */
 @Injectable()
 export class FakePathAi extends PathAi {
   /** Category name returned by generate and categorize; differs in case from the seeded "Lập trình" on purpose. */
@@ -52,14 +52,11 @@ export class FakePathAi extends PathAi {
   async chat({ history, preferences }: ChatTurnInput): Promise<ChatOutput> {
     const p = { ...preferences };
     const last = history.findLast((m) => m.role === 'user')?.content.trim() ?? '';
-    // The goal question is asked once the required fields are known; any answer to it (a goal or a skip) completes the brief.
-    const goalAnswered = !!(last && p.topic && p.level);
     if (last) {
       if (!p.topic) p.topic = last.slice(0, 200);
       else if (!p.level) p.level = parseLevel(last);
-      else if (!p.goal && !/^(không|bỏ qua)/i.test(last)) p.goal = last.slice(0, 300);
     }
-    const ready = goalAnswered;
+    const ready = !!(p.topic && p.level);
     if (!p.topic)
       return {
         reply: 'Bạn muốn học chủ đề gì?',
@@ -72,14 +69,6 @@ export class FakePathAi extends PathAi {
       return {
         reply: `Bạn đang ở trình độ nào với "${p.topic}"?`,
         quickReplies: LEVEL_REPLIES,
-        preferences: p,
-        ready,
-        offTopic: false,
-      };
-    if (!ready)
-      return {
-        reply: 'Bạn có mục tiêu cụ thể không? Ví dụ: dùng cho công việc, thi cử, hay chỉ tò mò.',
-        quickReplies: ['Không có mục tiêu cụ thể'],
         preferences: p,
         ready,
         offTopic: false,

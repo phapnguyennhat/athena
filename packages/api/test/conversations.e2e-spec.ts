@@ -79,20 +79,20 @@ describe('Conversations (e2e)', () => {
     expect((await u.current().expect(200)).body.id).toBe(body.id);
   });
 
-  it('a full stub conversation reaches ready only after the goal answer', async () => {
+  it('a full stub conversation reaches ready once topic and level are known', async () => {
     const u = await newUser();
     const { id } = (await u.start()).body;
     const readies: boolean[] = [];
-    for (const text of ['SQL căn bản', 'Cơ bản', 'Làm báo cáo']) {
+    for (const text of ['SQL căn bản', 'Cơ bản']) {
       const { body } = await u.send(id, text).expect(200);
       readies.push(body.ready);
     }
-    expect(readies).toEqual([false, false, true]);
+    expect(readies).toEqual([false, true]);
     const view = (await u.current()).body;
     expect(view.ready).toBe(true);
     expect(view.preferences).toMatchObject({ topic: 'SQL căn bản', level: 'beginner' });
     expect(view.messages.map((m: { role: string }) => m.role)).toEqual([
-      'assistant', 'user', 'assistant', 'user', 'assistant', 'user', 'assistant',
+      'assistant', 'user', 'assistant', 'user', 'assistant',
     ]);
   });
 
