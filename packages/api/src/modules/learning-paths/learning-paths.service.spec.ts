@@ -73,6 +73,7 @@ describe('LearningPathsService', () => {
       category: { id: 'cat1', name: 'Lập trình' },
       tags: ['sql'],
       isCopy: false,
+      extension: 'idle',
       progress: { done: 1, total: 3 },
       modules: [
         {

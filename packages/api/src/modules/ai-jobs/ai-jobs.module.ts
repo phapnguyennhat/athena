@@ -4,16 +4,13 @@ import { ClientsModule, Transport } from '@nestjs/microservices';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { connect } from 'amqplib';
 import { GeneratePathHandler } from '../learning-paths/generate-path.handler.js';
+import { ExtendPathHandler } from '../learning-paths/extend-path.handler.js';
 import { LearningPathsModule } from '../learning-paths/learning-paths.module.js';
 import { GenerateLessonHandler } from '../lessons/generate-lesson.handler.js';
 import { GenerateQuizHandler } from '../lessons/generate-quiz.handler.js';
 import { LessonsModule } from '../lessons/lessons.module.js';
 import { AiJob } from './ai-job.entity.js';
-import {
-  AI_JOBS_CLIENT,
-  AI_JOBS_DLQ,
-  aiJobsQueue,
-} from './ai-jobs.constants.js';
+import { AI_JOBS_CLIENT, AI_JOBS_DLQ, aiJobsQueue } from './ai-jobs.constants.js';
 import { AiJobsConsumer } from './ai-jobs.consumer.js';
 import { AiJobsController } from './ai-jobs.controller.js';
 import { AiJobsService } from './ai-jobs.service.js';
@@ -44,7 +41,7 @@ import { JOB_HANDLERS, type JobHandler } from './job-handlers.js';
     AiJobsService,
     {
       provide: JOB_HANDLERS,
-      inject: [GeneratePathHandler, GenerateLessonHandler, GenerateQuizHandler],
+      inject: [GeneratePathHandler, GenerateLessonHandler, GenerateQuizHandler, ExtendPathHandler],
       useFactory: (...handlers: JobHandler[]) => handlers,
     },
   ],

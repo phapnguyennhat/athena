@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { AiError, normalizeCategorized, serverReady, validateChatOutput, validatePathOutput } from './ai-output.js';
+import {
+  AiError,
+  normalizeCategorized,
+  serverReady,
+  validateChatOutput,
+  validateExtendOutput,
+  validatePathOutput,
+} from './ai-output.js';
 
 const chat = (over: Record<string, unknown> = {}) => ({
   reply: 'Xin chào',
@@ -118,5 +125,24 @@ describe('normalizeCategorized', () => {
       validatePathOutput({ ...path([mod(2), mod(2), mod(2)]), category: 'Toán học', tags: ['đại số'] }),
     ).toMatchObject({ category: 'Toán học', tags: ['đại số'] });
     expect(validatePathOutput(path([mod(2), mod(2), mod(2)]))).toMatchObject({ category: 'Khác', tags: [] });
+  });
+});
+
+describe('validateExtendOutput', () => {
+  it('keeps up to 3 next modules', () => {
+    expect(validateExtendOutput({ complete: false, modules: [mod(2, 'Tiếp')] })).toEqual({
+      complete: false,
+      modules: [{ title: 'Tiếp', lessons: [{ title: 'L' }, { title: 'L' }] }],
+    });
+    expect(code(() => validateExtendOutput({ complete: false, modules: [mod(2), mod(2), mod(2), mod(2)] }))).toBe(
+      'AI_INVALID_OUTPUT',
+    );
+  });
+  it('treats no new modules as complete', () => {
+    expect(validateExtendOutput({ complete: false, modules: [] })).toEqual({ complete: true, modules: [] });
+  });
+  it('rejects a missing flag or a 1-lesson module', () => {
+    expect(code(() => validateExtendOutput({ modules: [] }))).toBe('AI_INVALID_OUTPUT');
+    expect(code(() => validateExtendOutput({ complete: false, modules: [mod(1)] }))).toBe('AI_INVALID_OUTPUT');
   });
 });

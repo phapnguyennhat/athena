@@ -5,6 +5,8 @@ import {
   type Categorized,
   type ChatOutput,
   type ChatTurnInput,
+  type ExtendInput,
+  type ExtendOutput,
   type PathOutput,
 } from '../src/modules/learning-paths/path-ai.js';
 import type { LessonInput, LessonOutput, QuizInput, QuizOutput } from '../src/modules/lessons/lesson-output.js';
@@ -23,6 +25,18 @@ function parseLevel(text: string): Level | undefined {
 export class FakePathAi extends PathAi {
   /** Category name returned by generate and categorize; differs in case from the seeded "Lập trình" on purpose. */
   category = 'Lập Trình';
+
+  /** extend(): answer "complete" instead of a new chapter. */
+  extendComplete = false;
+
+  async extend(input: ExtendInput): Promise<ExtendOutput> {
+    if (this.extendComplete) return { complete: true, modules: [] };
+    const n = input.modules.length + 1;
+    return {
+      complete: false,
+      modules: [{ title: `Mở rộng ${n}`, lessons: [{ title: `Bài ${n}.1` }, { title: `Bài ${n}.2` }] }],
+    };
+  }
 
   async categorize(): Promise<Categorized> {
     return { category: this.category, tags: ['sql', 'cơ sở dữ liệu'] };

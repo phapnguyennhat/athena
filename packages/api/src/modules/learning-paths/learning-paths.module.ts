@@ -13,6 +13,7 @@ import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathLesson } from './entities/path-lesson.entity.js';
 import { PathMessage } from './entities/path-message.entity.js';
 import { PathModule } from './entities/path-module.entity.js';
+import { ExtendPathHandler } from './extend-path.handler.js';
 import { GeneratePathHandler } from './generate-path.handler.js';
 import { LearningPathsController } from './learning-paths.controller.js';
 import { LearningPathsService } from './learning-paths.service.js';
@@ -38,6 +39,7 @@ import { PathAi } from './path-ai.js';
     LearningPathsService,
     ConversationsService,
     GeneratePathHandler,
+    ExtendPathHandler,
     {
       provide: PathAi,
       inject: [ConfigService],
@@ -48,6 +50,6 @@ import { PathAi } from './path-ai.js';
         ),
     },
   ],
-  exports: [GeneratePathHandler, LearningPathsService, PathAi],
+  exports: [GeneratePathHandler, ExtendPathHandler, LearningPathsService, PathAi],
 })
 export class LearningPathsModule {}

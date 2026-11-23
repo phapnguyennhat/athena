@@ -3,11 +3,14 @@ import {
   AiError,
   normalizeCategorized,
   validateChatOutput,
+  validateExtendOutput,
   validatePathOutput,
   type Categorized,
   type CategorizeInput,
   type ChatOutput,
   type ChatTurnInput,
+  type ExtendInput,
+  type ExtendOutput,
   type PathOutput,
 } from './ai-output.js';
 import type { Preferences } from './dto/learning-path.dto.js';
@@ -23,6 +26,8 @@ import {
 import {
   CATEGORIZE_SCHEMA,
   CATEGORIZE_SYSTEM,
+  EXTEND_SCHEMA,
+  EXTEND_SYSTEM,
   CHAT_SCHEMA,
   CHAT_SYSTEM,
   GENERATE_SYSTEM,
@@ -68,6 +73,18 @@ export class GeminiPathAi extends PathAi {
         maxOutputTokens: 2000,
         thinkingConfig: NO_THINKING,
         responseSchema: PATH_SCHEMA,
+      }),
+    );
+  }
+
+  async extend(input: ExtendInput): Promise<ExtendOutput> {
+    return validateExtendOutput(
+      await this.call(JSON.stringify(input), {
+        systemInstruction: EXTEND_SYSTEM,
+        temperature: 0.6,
+        maxOutputTokens: 1500,
+        thinkingConfig: NO_THINKING,
+        responseSchema: EXTEND_SCHEMA,
       }),
     );
   }

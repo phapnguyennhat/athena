@@ -37,6 +37,15 @@ export type PathOutput = Categorized & {
   modules: { title: string; lessons: { title: string }[] }[];
 };
 
+/** The next chapters of a path, or `complete` when the outline already covers the topic for the level. */
+export type ExtendInput = {
+  language: string;
+  level?: string;
+  title: string;
+  modules: { title: string; lessons: string[] }[];
+};
+export type ExtendOutput = { complete: boolean; modules: { title: string; lessons: { title: string }[] }[] };
+
 export class AiError extends Error {
   constructor(
     readonly code: 'AI_UNAVAILABLE' | 'AI_INVALID_OUTPUT' | 'TOPIC_REJECTED',
@@ -129,6 +138,26 @@ export function validatePathOutput(raw: unknown): PathOutput {
       title: m.title,
       lessons: m.lessons.map((l) => ({ title: l.title })),
     })),
+  };
+}
+
+class ExtendOutDto {
+  @IsBoolean() complete: boolean;
+  @IsArray()
+  @ArrayMaxSize(3)
+  @ValidateNested({ each: true })
+  @Type(() => ModuleOut)
+  modules: ModuleOut[];
+}
+
+export function validateExtendOutput(raw: unknown): ExtendOutput {
+  const dto = plainToInstance(ExtendOutDto, raw);
+  if (!isObject(raw) || validateSync(dto, { whitelist: true }).length) throw invalid();
+  // Nothing new to add means the outline is done, whatever the flag says.
+  if (!dto.modules.length) return { complete: true, modules: [] };
+  return {
+    complete: dto.complete,
+    modules: dto.modules.map((m) => ({ title: m.title, lessons: m.lessons.map((l) => ({ title: l.title })) })),
   };
 }
 

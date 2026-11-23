@@ -9,11 +9,16 @@ import { StateMark } from '@/components/state-mark';
 import { toast } from '@/components/toast';
 import { useLoad } from '@/hooks/use-load';
 import { deletePath } from '@/lib/learning-api';
-import { getPath, type LessonStatus } from '@/lib/learning-paths-api';
+import { getPath, type LearningPath, type LessonStatus } from '@/lib/learning-paths-api';
 import { Pressable, SafeAreaView, ScrollView, Text, View } from '@/tw';
 
 const MARK = { completed: 'done', in_progress: 'progress', not_started: 'todo' } as const;
 const STATUS_LABEL: Record<LessonStatus, string> = { completed: 'đã học', in_progress: 'đang học', not_started: 'chưa học' };
+const EXTENSION_NOTE: Record<LearningPath['extension'], string> = {
+  idle: 'AI sẽ soạn thêm chương tiếp theo khi bạn sắp học xong.',
+  generating: 'AI đang soạn chương tiếp theo…',
+  complete: 'Khoá học đã hoàn chỉnh.',
+};
 
 export default function PathScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -90,6 +95,11 @@ export default function PathScreen() {
                 ))}
               </View>
             ))}
+            {path.status === 'active' ? (
+              <View accessibilityLiveRegion="polite" className="rounded-3xl border border-dashed border-line px-4 py-3">
+                <Text className="text-[14px] leading-5 text-ink-muted">{EXTENSION_NOTE[path.extension]}</Text>
+              </View>
+            ) : null}
           </ScrollView>
           {next ? (
             <View className="px-5 pb-2">

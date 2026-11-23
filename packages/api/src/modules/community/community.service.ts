@@ -78,7 +78,9 @@ export class CommunityService {
     const result = await this.ds.transaction(async (m) => {
       // Serialises one user's copies, so a double tap cannot make two.
       await m.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`path_copy:${userId}`]);
-      const [src] = await m.query(`SELECT * FROM learning_paths p WHERE p.id = $1 AND ${PUBLIC_PATH}`, [pathId]);
+      const [src] = await m.query(`SELECT * FROM learning_paths p WHERE p.id = $1 AND ${PUBLIC_PATH} FOR SHARE`, [
+        pathId,
+      ]);
       if (!src) throw notFound();
       if (src.user_id === userId) {
         if (!src.hidden_at) throw notFound();

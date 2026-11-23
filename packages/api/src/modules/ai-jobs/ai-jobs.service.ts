@@ -17,7 +17,13 @@ import { AI_JOBS_CLIENT } from './ai-jobs.constants.js';
 import { JOB_HANDLERS, JobError, type JobHandler } from './job-handlers.js';
 
 export type JobView = Pick<AiJob, 'id' | 'type' | 'status' | 'resultId' | 'errorCode'>;
-export const toJobView = ({ id, type, status, resultId, errorCode }: AiJob): JobView => ({ id, type, status, resultId, errorCode });
+export const toJobView = ({ id, type, status, resultId, errorCode }: AiJob): JobView => ({
+  id,
+  type,
+  status,
+  resultId,
+  errorCode,
+});
 
 const MAX_ATTEMPTS = 3;
 /** Wait before attempt n+1, indexed by the attempt that just failed (1-based). */
@@ -45,7 +51,11 @@ export class AiJobsService implements OnApplicationBootstrap, OnModuleDestroy {
    * Idempotent per target (the conversation for generate_path, the lesson for lesson/quiz jobs): while a job of this
    * type for it is queued/running, that job is returned. Backed by partial unique indexes on `ai_jobs`.
    */
-  async enqueue(userId: string, type: AiJob['type'], input: { conversationId: string } | { lessonId: string }): Promise<AiJob> {
+  async enqueue(
+    userId: string,
+    type: AiJob['type'],
+    input: { conversationId: string } | { lessonId: string } | { rootId: string; afterModules: number },
+  ): Promise<AiJob> {
     let job: AiJob | undefined;
     // Two tries: the active job that blocked the insert may finish before we read it.
     for (let i = 0; i < 2 && !job; i++) {
@@ -64,7 +74,10 @@ export class AiJobsService implements OnApplicationBootstrap, OnModuleDestroy {
 
   /** The newest job of this type for a lesson: the app shows its status (generating / failed + retry). */
   latestForLesson(userId: string, type: AiJob['type'], lessonId: string): Promise<AiJob | null> {
-    return this.jobs.findOne({ where: { userId, type, input: JsonContains({ lessonId }) }, order: { createdAt: 'DESC' } });
+    return this.jobs.findOne({
+      where: { userId, type, input: JsonContains({ lessonId }) },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async findForUser(userId: string, id: string): Promise<AiJob> {
@@ -77,7 +90,10 @@ export class AiJobsService implements OnApplicationBootstrap, OnModuleDestroy {
     const job = await this.jobs.findOneBy({ id: jobId });
     if (job?.status !== 'queued') return;
     // Atomic claim: a redelivered or duplicate message loses here.
-    const claim = await this.jobs.update({ id: jobId, status: 'queued' }, { status: 'running', attempts: () => 'attempts + 1' });
+    const claim = await this.jobs.update(
+      { id: jobId, status: 'queued' },
+      { status: 'running', attempts: () => 'attempts + 1' },
+    );
     if (claim.affected !== 1) return;
     this.change(job, { status: 'running', attempts: job.attempts + 1 });
 
@@ -148,7 +164,9 @@ export class AiJobsService implements OnApplicationBootstrap, OnModuleDestroy {
    * Runs at boot and every minute; never touches `running` jobs, which may be in progress.
    */
   async sweepQueued(): Promise<number> {
-    const stale = await this.jobs.find({ where: { status: 'queued', updatedAt: LessThan(new Date(Date.now() - STALE_MS)) } });
+    const stale = await this.jobs.find({
+      where: { status: 'queued', updatedAt: LessThan(new Date(Date.now() - STALE_MS)) },
+    });
     await this.republish(stale);
     return stale.length;
   }
@@ -162,11 +180,17 @@ export class AiJobsService implements OnApplicationBootstrap, OnModuleDestroy {
 
   private async publish(job: AiJob) {
     try {
-      await lastValueFrom(this.client.emit('ai.job', { jobId: job.id }).pipe(timeout(PUBLISH_TIMEOUT_MS)), { defaultValue: undefined });
+      await lastValueFrom(this.client.emit('ai.job', { jobId: job.id }).pipe(timeout(PUBLISH_TIMEOUT_MS)), {
+        defaultValue: undefined,
+      });
     } catch (e) {
       this.log.error(`publish of job ${job.id} failed: ${String(e)}`);
       await this.fail(job, 'QUEUE_UNAVAILABLE');
-      throw new ServiceUnavailableException({ statusCode: 503, code: 'QUEUE_UNAVAILABLE', message: 'Could not queue the job. Try again shortly.' });
+      throw new ServiceUnavailableException({
+        statusCode: 503,
+        code: 'QUEUE_UNAVAILABLE',
+        message: 'Could not queue the job. Try again shortly.',
+      });
     }
   }
 

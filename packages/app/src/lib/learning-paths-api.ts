@@ -25,6 +25,8 @@ export type LearningPath = {
   summary: string;
   /** Copied from a Community course. Deleting an active original only hides it. */
   isCopy: boolean;
+  /** AI adds chapters as the learner nears the end; `complete` once the course covers the topic. */
+  extension: 'idle' | 'generating' | 'complete';
   progress: { done: number; total: number };
   modules: { id: string; title: string; lessons: { id: string; title: string; status: LessonStatus }[] }[];
 };

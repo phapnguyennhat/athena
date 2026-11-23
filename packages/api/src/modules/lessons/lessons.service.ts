@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource, type EntityManager } from 'typeorm';
 import { AiJobsService, toJobView, type JobView } from '../ai-jobs/ai-jobs.service.js';
+import { MAX_MODULES } from '../learning-paths/extend-path.handler.js';
 import { LearningPathEntity } from '../learning-paths/entities/learning-path.entity.js';
 import { PathLesson } from '../learning-paths/entities/path-lesson.entity.js';
 import { LessonContentEntity } from './entities/lesson-content.entity.js';
@@ -199,11 +200,28 @@ export class LessonsService {
       );
       if (row) await this.streak.record(m, userId);
     });
+    await this.extendNearEnd(userId, path.id).catch(() => undefined); // best effort: never fails a completion
     return {
       status: 'completed',
       pathProgress: await this.pathProgress(userId, path.id),
       streak: await this.streak.view(userId),
     };
+  }
+
+  /** With ≤ 2 lessons left, queues the family's next chapters (one active job per family, see ExtendPathHandler). */
+  private async extendNearEnd(userId: string, pathId: string): Promise<void> {
+    const [r] = await this.ds.query(
+      `SELECT root.id AS "rootId", root.outline_complete AS complete,
+         (SELECT count(*)::int FROM path_modules m WHERE m.path_id = p.id) AS modules,
+         (SELECT count(*)::int FROM path_lessons l JOIN path_modules m ON m.id = l.module_id
+            LEFT JOIN lesson_progress pr ON pr.lesson_id = l.id AND pr.user_id = $1
+          WHERE m.path_id = p.id AND pr.status IS DISTINCT FROM 'completed') AS remaining
+       FROM learning_paths p JOIN learning_paths root ON root.id = coalesce(p.source_path_id, p.id)
+       WHERE p.id = $2`,
+      [userId, pathId],
+    );
+    if (!r || r.complete || r.remaining > 2 || r.modules >= MAX_MODULES) return;
+    await this.jobs.enqueue(userId, 'extend_path', { rootId: r.rootId, afterModules: r.modules });
   }
 
   /** The most recently opened, unfinished lesson of an active path. */

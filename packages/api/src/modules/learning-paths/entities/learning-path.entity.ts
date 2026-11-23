@@ -74,6 +74,10 @@ export class LearningPathEntity {
   @Column({ name: 'hidden_at', type: 'timestamptz', nullable: true })
   hiddenAt: Date | null;
 
+  /** On a family's root: the AI judged the outline comprehensive, so no more chapters are added. */
+  @Column({ name: 'outline_complete', type: 'boolean', default: false })
+  outlineComplete: boolean;
+
   @OneToMany(() => PathModule, (m) => m.path)
   modules: Relation<PathModule>[];
 

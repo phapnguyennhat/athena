@@ -25,6 +25,8 @@ export type LearningPathView = {
   tags: string[];
   /** Copied from a Community course. Deleting an active original only hides it. */
   isCopy: boolean;
+  /** AI chapter extension of the course family: `generating` while a job runs, `complete` once the AI said so. */
+  extension: 'idle' | 'generating' | 'complete';
   progress: { done: number; total: number };
   modules: {
     id: string;
@@ -143,6 +145,12 @@ export class LearningPathsService {
       })),
     }));
     const lessons = modules.flatMap((m) => m.lessons);
+    const [ext] = await this.ds.query(
+      `SELECT r.outline_complete AS complete, EXISTS (SELECT 1 FROM ai_jobs j WHERE j.type = 'extend_path'
+         AND j.input->>'rootId' = r.id::text AND j.status IN ('queued', 'running')) AS generating
+       FROM learning_paths r WHERE r.id = $1`,
+      [path.sourcePathId ?? path.id],
+    );
     return {
       id: path.id,
       status: path.status,
@@ -151,6 +159,7 @@ export class LearningPathsService {
       category: path.category ? { id: path.category.id, name: path.category.name } : null,
       tags: path.tags,
       isCopy: Boolean(path.sourcePathId),
+      extension: ext?.complete ? 'complete' : ext?.generating ? 'generating' : 'idle',
       progress: {
         done: lessons.filter((l) => l.status === 'completed').length,
         total: lessons.length,
