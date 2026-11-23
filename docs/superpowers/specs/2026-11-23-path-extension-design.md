@@ -25,7 +25,7 @@ Approved by the owner 2026-11-23 (approach 1: append to every family path; not a
   as for copies). Search index: publish the root (`lesson_count` changed).
 - **Visible state** (`LearningPathView.extension`): `complete` (root outline_complete) · `generating` (an active
   extend job for the root) · `idle`. Path detail shows, for active paths:
-  - idle: "AI sẽ soạn thêm chương tiếp theo khi bạn sắp học xong."
+  - idle: "Tiếp tục học để mở khoá các chương tiếp theo."
   - generating: "AI đang soạn chương tiếp theo…"
   - complete: "Khoá học đã hoàn chỉnh."
 

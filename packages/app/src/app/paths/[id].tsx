@@ -15,7 +15,7 @@ import { Pressable, SafeAreaView, ScrollView, Text, View } from '@/tw';
 const MARK = { completed: 'done', in_progress: 'progress', not_started: 'todo' } as const;
 const STATUS_LABEL: Record<LessonStatus, string> = { completed: 'đã học', in_progress: 'đang học', not_started: 'chưa học' };
 const EXTENSION_NOTE: Record<LearningPath['extension'], string> = {
-  idle: 'AI sẽ soạn thêm chương tiếp theo khi bạn sắp học xong.',
+  idle: 'Tiếp tục học để mở khoá các chương tiếp theo.',
   generating: 'AI đang soạn chương tiếp theo…',
   complete: 'Khoá học đã hoàn chỉnh.',
 };
