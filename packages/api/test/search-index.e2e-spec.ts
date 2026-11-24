@@ -71,7 +71,13 @@ describe('Typesense index of community courses (e2e)', { timeout: 30_000 }, () =
 
   async function makePath(
     userId: string,
-    o: { title?: string; tags?: string[]; status?: 'draft' | 'active'; category?: string } = {},
+    o: {
+      title?: string;
+      summary?: string;
+      tags?: string[];
+      status?: 'draft' | 'active';
+      category?: string;
+    } = {},
   ): Promise<string> {
     const [{ id: categoryId }] = await ds.query(`SELECT id FROM categories WHERE slug = $1`, [
       o.category ?? 'lap-trinh',
@@ -82,7 +88,7 @@ describe('Typesense index of community courses (e2e)', { timeout: 30_000 }, () =
           userId,
           status: o.status ?? 'active',
           title: o.title ?? `Khoá ${run}`,
-          summary: 'Tóm tắt',
+          summary: o.summary ?? 'Tóm tắt',
           preferences: { topic: 'x', level: 'beginner' },
           contentLanguage: 'vi',
           categoryId,
@@ -201,6 +207,60 @@ describe('Typesense index of community courses (e2e)', { timeout: 30_000 }, () =
     expect((await search.search({ tag: `stale-${run}`, limit: 10 })).ids).toEqual([]);
   });
 
+  describe('similar', () => {
+    let sqlPath: string;
+
+    beforeAll(async () => {
+      const a = await newUser();
+      sqlPath = await makePath(a.id, {
+        title: `SQL truy vấn để phân tích dữ liệu ${run}`,
+        summary: 'Viết câu truy vấn SELECT, JOIN, GROUP BY để tổng hợp số liệu và làm báo cáo.',
+        tags: ['sql', 'phân tích dữ liệu'],
+      });
+      await search.sync(sqlPath);
+    });
+
+    it('finds a paraphrased course at the same level', async () => {
+      const { ids } = await search.similar({ q: 'học SQL để làm báo cáo số liệu', level: 'beginner', limit: 3 });
+      expect(ids).toContain(sqlPath);
+    });
+
+    it('filters by level', async () => {
+      const { ids } = await search.similar({ q: 'học SQL để làm báo cáo số liệu', level: 'advanced', limit: 3 });
+      expect(ids).not.toContain(sqlPath);
+    });
+
+    it('returns nothing for an unrelated topic', async () => {
+      const { ids } = await search.similar({ q: 'Nấu phở bò truyền thống', level: 'beginner', limit: 3 });
+      expect(ids).not.toContain(sqlPath);
+    });
+  });
+
+  it('ensureCollection adds the embedding field to an old collection', async () => {
+    const ts = app.get<Client>(TYPESENSE);
+    const old = `${COLLECTION}_old`;
+    await ts.collections().create({
+      name: old,
+      fields: [
+        { name: 'title', type: 'string' },
+        { name: 'summary', type: 'string' },
+        { name: 'tags', type: 'string[]' },
+      ],
+    });
+    process.env.TYPESENSE_COLLECTION = old;
+    try {
+      const svc = new SearchIndexService(ds, ts, undefined as never);
+      await svc.ensureCollection();
+      const { fields } = await ts.collections(old).retrieve();
+      expect(fields.map((f) => f.name)).toContain('embedding');
+    } finally {
+      process.env.TYPESENSE_COLLECTION = COLLECTION;
+      await ts
+        .collections(old)
+        .delete()
+        .catch(() => {});
+    }
+  }, 120_000);
   // Last: it drops the collection.
   it('recreates a missing collection on sync and search', async () => {
     const a = await newUser();

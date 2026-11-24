@@ -3,6 +3,7 @@ import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom, timeout } from 'rxjs';
 import { DataSource } from 'typeorm';
 import { Errors, type Client, type CollectionCreateSchema } from 'typesense';
+import type { CollectionFieldSchema } from 'typesense/lib/Typesense/Collection.js';
 import { PUBLIC_PATH } from '../community/public-path.js';
 import { collectionName, SEARCH_CLIENT, TYPESENSE } from './search.constants.js';
 
@@ -26,6 +27,16 @@ type PathDoc = {
 // Typesense folds diacritics ("nau an" finds "Nấu ăn") but not đ, which is a letter of its own.
 const plain = (s: string) => s.replace(/đ/g, 'd').replace(/Đ/g, 'D');
 
+/** Built in to Typesense (no API call, no tokens); multilingual, so Vietnamese works. */
+const EMBEDDING_FIELD: CollectionFieldSchema = {
+  name: 'embedding',
+  type: 'float[]',
+  embed: { from: ['title', 'summary', 'tags'], model_config: { model_name: 'ts/multilingual-e5-small' } },
+};
+
+// Cosine distance cut-off for a "similar course"; tuned on the similar() cases in search-index.e2e-spec.ts.
+const MATCH_DISTANCE = 0.25;
+
 const schema = (name: string): CollectionCreateSchema => ({
   name,
   fields: [
@@ -40,6 +51,7 @@ const schema = (name: string): CollectionCreateSchema => ({
     { name: 'created_at', type: 'int64', sort: true },
     { name: 'title_plain', type: 'string' },
     { name: 'tags_plain', type: 'string[]' },
+    EMBEDDING_FIELD,
   ],
 });
 
@@ -65,6 +77,10 @@ export class SearchIndexService implements OnApplicationBootstrap {
       await this.ts.collections().create(schema(this.name));
     } catch (e) {
       if (!(e instanceof Errors.ObjectAlreadyExists)) throw e;
+      // Collections made before hybrid search: Typesense embeds the existing documents when the field is added.
+      const { fields } = await this.ts.collections(this.name).retrieve();
+      if (!fields.some((f) => f.name === EMBEDDING_FIELD.name))
+        await this.ts.collections(this.name).update({ fields: [EMBEDDING_FIELD] });
     }
   }
 
@@ -131,6 +147,22 @@ export class SearchIndexService implements OnApplicationBootstrap {
         sort_by: 'copies:desc,created_at:desc',
         per_page: params.limit,
         include_fields: 'id',
+      }),
+    );
+    return { ids: (res.hits ?? []).map((h) => h.document.id) };
+  }
+
+  /** Hybrid (keyword + meaning) search at one level, for courses close enough to reuse instead of generating. */
+  async similar(params: { q: string; level: string; limit: number }): Promise<{ ids: string[] }> {
+    const res = await this.withCollection(() =>
+      this.documents().search({
+        q: params.q,
+        query_by: 'title,tags,summary,title_plain,tags_plain,embedding',
+        filter_by: `level:=\`${params.level.replace(/`/g, '')}\``,
+        vector_query: `embedding:([], distance_threshold: ${MATCH_DISTANCE})`,
+        exclude_fields: 'embedding',
+        include_fields: 'id',
+        per_page: params.limit,
       }),
     );
     return { ids: (res.hits ?? []).map((h) => h.document.id) };

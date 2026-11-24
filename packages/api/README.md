@@ -68,7 +68,7 @@ AI and YouTube keys must never be shipped to the mobile client.
 
 ### Deploying
 
-Run `pnpm migration:run`, then on the first deploy with community courses `pnpm search:reindex` to build the Typesense collection from Postgres. `TYPESENSE_URL` and `TYPESENSE_API_KEY` are required.
+Run `pnpm migration:run`, then on the first deploy with community courses `pnpm search:reindex` to build the Typesense collection from Postgres. `TYPESENSE_URL` and `TYPESENSE_API_KEY` are required. The collection has a built-in embedding (`ts/multilingual-e5-small`) for similar-course matching: Typesense downloads the model on first use, so it needs internet once and a few hundred MB more RAM; an existing collection gets the field added on boot.
 
 ## MVP scope
 
