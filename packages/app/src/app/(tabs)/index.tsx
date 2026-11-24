@@ -8,7 +8,7 @@ import { ContinueSection, SectionTitle, StreakCard } from '@/components/home-sec
 import { Retry } from '@/components/retry';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useLoad } from '@/hooks/use-load';
-import { getRecommendations } from '@/lib/community-api';
+import { getRecommendations, listCommunityPaths } from '@/lib/community-api';
 import { getDashboard } from '@/lib/learning-api';
 import { Pressable, SafeAreaView, ScrollView, Text, View } from '@/tw';
 
@@ -19,7 +19,12 @@ export default function HomeScreen() {
   const router = useRouter();
   const { data, error, reload, refreshing, refresh } = useLoad(getDashboard);
   // Quiet: suggestions are extra, so a failure just hides the section instead of toasting.
-  const suggestions = useLoad(() => getRecommendations().catch(() => []));
+  // No recommendations (e.g. every course is already copied) → fall back to the community's courses.
+  const suggestions = useLoad(async () => {
+    const picks = await getRecommendations().catch(() => []);
+    if (picks.length) return { title: 'Gợi ý cho bạn', courses: picks };
+    return { title: 'Khoá học cộng đồng', courses: await listCommunityPaths({}).catch(() => []) };
+  });
 
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
@@ -73,15 +78,15 @@ export default function HomeScreen() {
             </>
           )}
           {/* Outside the dashboard branch: suggestions load on their own, so they show even if the dashboard fails. */}
-          {suggestions.data?.length ? (
+          {suggestions.data?.courses.length ? (
             <View className="-mx-5 gap-3">
               <View className="mx-5 flex-row items-baseline justify-between">
-                <SectionTitle>Gợi ý cho bạn</SectionTitle>
+                <SectionTitle>{suggestions.data.title}</SectionTitle>
                 <Pressable accessibilityRole="link" hitSlop={8} onPress={() => router.push('/community')} className="active:opacity-70">
                   <Text className="text-[15px] font-bold text-tint-ink">Xem tất cả</Text>
                 </Pressable>
               </View>
-              <CourseRail courses={suggestions.data} onOpen={(id) => router.push(`/community/${id}`)} />
+              <CourseRail courses={suggestions.data.courses} onOpen={(id) => router.push(`/community/${id}`)} />
             </View>
           ) : null}
         </View>

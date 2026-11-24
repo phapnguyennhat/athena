@@ -6,6 +6,7 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.e2e-spec.ts'],
+    globalSetup: ['./test/global-teardown.ts'],
     // Files share Postgres and the `ai.jobs` queue: in parallel, one file's app consumes another's jobs.
     fileParallelism: false,
   },
