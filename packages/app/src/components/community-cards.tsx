@@ -69,7 +69,7 @@ export function TagChip({ tag, onPress }: { tag: string; onPress: () => void }) 
 }
 
 /** Result row: title, category · level · lessons · learners, then its tags as filter chips. */
-export function CourseRow({ course, onPress, onTag }: { course: CommunityPath; onPress: () => void; onTag: (tag: string) => void }) {
+export function CourseRow({ course, onPress, onTag }: { course: CommunityPath; onPress: () => void; onTag?: (tag: string) => void }) {
   return (
     <View className="gap-2.5 rounded-2xl border border-line bg-surface p-4">
       <Pressable accessibilityRole="button" onPress={onPress} className="gap-1 active:opacity-70">
@@ -80,7 +80,7 @@ export function CourseRow({ course, onPress, onTag }: { course: CommunityPath; o
           {meta(course, true)} · {course.copies} người học
         </Text>
       </Pressable>
-      {course.tags.length ? (
+      {onTag && course.tags.length ? (
         <View className="flex-row flex-wrap gap-2">
           {course.tags.map((t) => (
             <TagChip key={t} tag={t} onPress={() => onTag(t)} />

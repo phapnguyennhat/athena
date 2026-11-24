@@ -1,4 +1,5 @@
 import { authFetch, ApiError } from '@/lib/api';
+import type { CommunityPath } from '@/lib/community-api';
 
 // Mirrors the conversations, jobs and learning-paths controllers in packages/api.
 export type Level = 'beginner' | 'intermediate' | 'advanced';
@@ -46,6 +47,10 @@ export const sendMessage = (id: string, content: string) =>
 
 export const generatePath = (conversationId: string) =>
   authFetch<JobView>(`/learning-paths/conversations/${conversationId}/generate`, { method: 'POST' });
+
+/** Public courses close to the brief, offered before generating a new one. */
+export const getMatches = (conversationId: string) =>
+  authFetch<CommunityPath[]>(`/learning-paths/conversations/${conversationId}/matches`);
 
 export const getJob = (id: string) => authFetch<JobView>(`/jobs/${id}`);
 
