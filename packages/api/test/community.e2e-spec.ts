@@ -9,6 +9,7 @@ import type { App } from 'supertest/types.js';
 import type { Client } from 'typesense';
 import { AppModule } from '../src/app.module.js';
 import { LearningPathEntity } from '../src/modules/learning-paths/entities/learning-path.entity.js';
+import { PathConversation } from '../src/modules/learning-paths/entities/path-conversation.entity.js';
 import { insertModules } from '../src/modules/learning-paths/learning-paths.service.js';
 import { TYPESENSE, typesenseClient } from '../src/modules/search/search.constants.js';
 import { SearchIndexService } from '../src/modules/search/search-index.service.js';
@@ -258,6 +259,49 @@ describe('Community API (e2e)', { timeout: 30_000 }, () => {
     expect(body.length).toBeLessThanOrEqual(10);
     const copies = (body as Item[]).map((i) => i.copies);
     expect(copies).toEqual([...copies].sort((x, y) => y - x));
+  });
+
+  describe('matches for a conversation', () => {
+    // One open conversation per user: close the previous one first.
+    const conversation = async (userId: string, ready = true) => {
+      const repo = ds.getRepository(PathConversation);
+      await repo.update({ userId, status: 'open' }, { status: 'closed' });
+      const conv = await repo.save({
+        userId,
+        ready,
+        preferences: { topic: `Lập trình một ${run}`, level: 'beginner' as const },
+      });
+      return conv.id;
+    };
+    const matches = (server: ReturnType<typeof request>, auth: Auth, id: string) =>
+      server.get(`/learning-paths/conversations/${id}/matches`).set(auth);
+
+    it('returns similar public courses for a ready conversation', async () => {
+      const { body } = await matches(http, c.auth, await conversation(c.id)).expect(200);
+      expect((body as Item[]).map((i) => i.id)).toContain(p.l1);
+      expect(body.length).toBeLessThanOrEqual(3);
+      anonymous(body);
+    });
+
+    it("never returns the caller's own visible course or drafts", async () => {
+      const { body } = await matches(http, a.auth, await conversation(a.id)).expect(200);
+      const ids = (body as Item[]).map((i) => i.id);
+      for (const own of [p.l1, p.l2, p.draft]) expect(ids).not.toContain(own);
+    });
+
+    it('is 409 NOT_READY before the brief is complete', async () => {
+      const res = await matches(http, c.auth, await conversation(c.id, false)).expect(409);
+      expect(res.body).toMatchObject({ code: 'NOT_READY' });
+    });
+
+    it("is 404 on someone else's conversation", async () => {
+      await matches(http, b.auth, await conversation(c.id)).expect(404);
+    });
+
+    it('is 503 SEARCH_UNAVAILABLE when Typesense is down', async () => {
+      const res = await matches(request(down.getHttpServer()), c.auth, await conversation(c.id)).expect(503);
+      expect(res.body).toMatchObject({ code: 'SEARCH_UNAVAILABLE' });
+    });
   });
 
   it('answers 503 SEARCH_UNAVAILABLE when Typesense is down', async () => {

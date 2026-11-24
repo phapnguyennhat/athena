@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiJob } from '../ai-jobs/ai-job.entity.js';
 import { AiJobsModule } from '../ai-jobs/ai-jobs.module.js';
+import { CommunityModule } from '../community/community.module.js';
 import { SearchModule } from '../search/search.module.js';
 import { ConversationsController } from './conversations.controller.js';
 import { ConversationsService } from './conversations.service.js';
@@ -33,6 +34,7 @@ import { PathAi } from './path-ai.js';
     ]),
     forwardRef(() => AiJobsModule),
     SearchModule,
+    CommunityModule,
   ],
   controllers: [LearningPathsController, ConversationsController],
   providers: [

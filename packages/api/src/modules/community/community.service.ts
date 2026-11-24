@@ -31,6 +31,7 @@ const FROM = 'FROM learning_paths p LEFT JOIN categories c ON c.id = p.category_
 const NOT_OWN_VISIBLE = 'NOT (p.user_id = $1 AND p.hidden_at IS NULL)';
 // Typesense's per_page maximum.
 const MAX_PAGE = 250;
+const MATCHES = 3;
 
 type Row = {
   id: string;
@@ -140,22 +141,39 @@ export class CommunityService {
 
   /** Typesense finds and orders the ids; Postgres, the truth, fills them in and drops stale or own visible ones. */
   async list(userId: string, q: ListCommunityPathsDto): Promise<CommunityPath[]> {
-    const [{ n }] = await this.ds.query(
-      `SELECT count(*)::int AS n FROM learning_paths p WHERE p.user_id = $1 AND p.hidden_at IS NULL AND ${PUBLIC_PATH}`,
-      [userId],
-    );
+    const n = await this.ownPublicCount(userId);
     // shortcut: a caller with over 200 own public paths may get a short page; upgrade to a Typesense id filter then.
     const { ids } = await this.searching(() =>
       this.search.search({ q: q.q, categoryId: q.category, tag: q.tag, limit: Math.min(q.limit + n, MAX_PAGE) }),
     );
+    return this.fill(userId, ids, q.limit);
+  }
+
+  private async ownPublicCount(userId: string): Promise<number> {
+    const [{ n }] = await this.ds.query(
+      `SELECT count(*)::int AS n FROM learning_paths p WHERE p.user_id = $1 AND p.hidden_at IS NULL AND ${PUBLIC_PATH}`,
+      [userId],
+    );
+    return n;
+  }
+
+  /** Postgres, the truth, fills in Typesense's ids in its order and drops stale or own visible ones. */
+  private async fill(userId: string, ids: string[], limit: number): Promise<CommunityPath[]> {
     if (!ids.length) return [];
     const rows: Row[] = await this.ds.query(
       `SELECT ${COLUMNS} ${FROM}
        WHERE p.id = ANY($2::uuid[]) AND ${PUBLIC_PATH} AND ${NOT_OWN_VISIBLE}
        ORDER BY array_position($2::uuid[], p.id) LIMIT $3`,
-      [userId, ids, q.limit],
+      [userId, ids, limit],
     );
     return rows.map(toPath);
+  }
+
+  /** Up to 3 public courses close to a brief (same level), offered before generating a new one. */
+  async matches(userId: string, q: { topic: string; level: string }): Promise<CommunityPath[]> {
+    const n = await this.ownPublicCount(userId);
+    const { ids } = await this.searching(() => this.search.similar({ q: q.topic, level: q.level, limit: MATCHES + n }));
+    return this.fill(userId, ids, MATCHES);
   }
 
   async detail(userId: string, pathId: string): Promise<CommunityPathDetail> {
