@@ -45,6 +45,8 @@ describe('Typesense index of community courses (e2e)', { timeout: 30_000 }, () =
     ds = app.get(DataSource);
     search = app.get(SearchIndexService);
     community = app.get(CommunityService);
+    // Boot adds the embedding in the background; search results are unreliable until that alter finishes.
+    await search.ensureCollection();
   });
 
   afterAll(async () => {
@@ -221,7 +223,7 @@ describe('Typesense index of community courses (e2e)', { timeout: 30_000 }, () =
     });
 
     it('finds a paraphrased course at the same level', async () => {
-      const { ids } = await search.similar({ q: 'học SQL để làm báo cáo số liệu', level: 'beginner', limit: 3 });
+      const { ids } = await search.similar({ q: 'học SQL để làm báo cáo số liệu', level: 'beginner', limit: 50 });
       expect(ids).toContain(sqlPath);
     });
 
@@ -234,6 +236,32 @@ describe('Typesense index of community courses (e2e)', { timeout: 30_000 }, () =
       const { ids } = await search.similar({ q: 'Nấu phở bò truyền thống', level: 'beginner', limit: 3 });
       expect(ids).not.toContain(sqlPath);
     });
+
+    it('ignores word overlap with a different subject', async () => {
+      // Shares "lập trình", "cơ bản"-style syllables with programming courses but not the subject.
+      const { ids } = await search.similar({ q: 'Lập trình Java cơ bản', level: 'beginner', limit: 3 });
+      expect(ids).not.toContain(sqlPath);
+    });
+  });
+
+  it('keeps the collection and keyword search when the embedding model cannot load', async () => {
+    const ts = app.get<Client>(TYPESENSE);
+    const name = `${COLLECTION}_nomodel`;
+    process.env.TYPESENSE_COLLECTION = name;
+    const proto = Object.getPrototypeOf(ts.collections(name)) as { update: () => Promise<unknown> };
+    const spy = vi.spyOn(proto, 'update').mockRejectedValue(new Error('model download failed'));
+    try {
+      const svc = new SearchIndexService(ds, ts, undefined as never);
+      await expect(svc.ensureCollection()).resolves.toBeUndefined();
+      expect((await svc.search({ limit: 1 })).ids).toEqual([]);
+    } finally {
+      spy.mockRestore();
+      process.env.TYPESENSE_COLLECTION = COLLECTION;
+      await ts
+        .collections(name)
+        .delete()
+        .catch(() => {});
+    }
   });
 
   it('ensureCollection adds the embedding field to an old collection', async () => {

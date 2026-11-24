@@ -172,7 +172,9 @@ export class CommunityService {
   /** Up to 3 public courses close to a brief (same level), offered before generating a new one. */
   async matches(userId: string, q: { topic: string; level: string }): Promise<CommunityPath[]> {
     const n = await this.ownPublicCount(userId);
-    const { ids } = await this.searching(() => this.search.similar({ q: q.topic, level: q.level, limit: MATCHES + n }));
+    const { ids } = await this.searching(() =>
+      this.search.similar({ q: q.topic, level: q.level, limit: Math.min(MATCHES + n, MAX_PAGE) }),
+    );
     return this.fill(userId, ids, MATCHES);
   }
 

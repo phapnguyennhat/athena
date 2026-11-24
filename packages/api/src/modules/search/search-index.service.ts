@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/comm
 import { ClientProxy } from '@nestjs/microservices';
 import { lastValueFrom, timeout } from 'rxjs';
 import { DataSource } from 'typeorm';
-import { Errors, type Client, type CollectionCreateSchema } from 'typesense';
+import { Client, Errors, type CollectionCreateSchema } from 'typesense';
 import type { CollectionFieldSchema } from 'typesense/lib/Typesense/Collection.js';
 import { PUBLIC_PATH } from '../community/public-path.js';
 import { collectionName, SEARCH_CLIENT, TYPESENSE } from './search.constants.js';
@@ -34,8 +34,11 @@ const EMBEDDING_FIELD: CollectionFieldSchema = {
   embed: { from: ['title', 'summary', 'tags'], model_config: { model_name: 'ts/multilingual-e5-small' } },
 };
 
-// Cosine distance cut-off for a "similar course"; tuned on the similar() cases in search-index.e2e-spec.ts.
-const MATCH_DISTANCE = 0.25;
+// Cosine distance cut-off for a "similar course". e5 puts everything close: on 13 course/topic pairs the right course sat
+// at 0.07-0.15 and the nearest course for 6 topics with none at 0.15-0.23. 0.14 drops all of those and keeps 11 of 13.
+const MATCH_DISTANCE = 0.14;
+// Adding the field embeds every document (and the first use downloads the model): far longer than a search.
+const ADMIN_TIMEOUT_SECONDS = 300;
 
 const schema = (name: string): CollectionCreateSchema => ({
   name,
@@ -51,7 +54,6 @@ const schema = (name: string): CollectionCreateSchema => ({
     { name: 'created_at', type: 'int64', sort: true },
     { name: 'title_plain', type: 'string' },
     { name: 'tags_plain', type: 'string[]' },
-    EMBEDDING_FIELD,
   ],
 });
 
@@ -60,27 +62,53 @@ const schema = (name: string): CollectionCreateSchema => ({
 export class SearchIndexService implements OnApplicationBootstrap {
   private readonly log = new Logger(SearchIndexService.name);
   private readonly name = collectionName();
+  /** Same server, long timeout: for adding the embedding and bulk imports, which embed every document. */
+  private readonly admin: Client;
 
   constructor(
     private readonly ds: DataSource,
     @Inject(TYPESENSE) private readonly ts: Client,
     @Inject(SEARCH_CLIENT) private readonly client: ClientProxy,
-  ) {}
+  ) {
+    this.admin = new Client({ ...ts.configuration, connectionTimeoutSeconds: ADMIN_TIMEOUT_SECONDS });
+  }
 
   // The app boots without Typesense: search answers 503 meanwhile and `pnpm search:reindex` rebuilds.
-  onApplicationBootstrap() {
-    return this.ensureCollection().catch((e: unknown) => this.log.error(`ensureCollection failed: ${String(e)}`));
+  async onApplicationBootstrap() {
+    try {
+      await this.createCollection();
+    } catch (e) {
+      return this.log.error(`ensureCollection failed: ${String(e)}`);
+    }
+    // Not awaited: re-embedding an existing collection can take minutes and must not hold up boot.
+    void this.addEmbedding();
   }
 
   async ensureCollection(): Promise<void> {
+    await this.createCollection();
+    await this.addEmbedding();
+  }
+
+  private async createCollection(): Promise<void> {
     try {
       await this.ts.collections().create(schema(this.name));
     } catch (e) {
       if (!(e instanceof Errors.ObjectAlreadyExists)) throw e;
-      // Collections made before hybrid search: Typesense embeds the existing documents when the field is added.
+    }
+  }
+
+  /**
+   * Adds the embedding field (Typesense embeds every document). Separate from the collection and never throws: if the
+   * model cannot load, only similar() fails (503, and the app generates instead); listing and search keep working.
+   */
+  private async addEmbedding(): Promise<void> {
+    try {
       const { fields } = await this.ts.collections(this.name).retrieve();
-      if (!fields.some((f) => f.name === EMBEDDING_FIELD.name))
-        await this.ts.collections(this.name).update({ fields: [EMBEDDING_FIELD] });
+      if (fields.some((f) => f.name === EMBEDDING_FIELD.name)) return;
+      await this.admin.collections(this.name).update({ fields: [EMBEDDING_FIELD] });
+    } catch (e) {
+      // Includes "another collection update in progress" from a second instance booting at the same time.
+      this.log.warn(`adding the embedding field failed: ${String(e)}`);
     }
   }
 
@@ -114,7 +142,7 @@ export class SearchIndexService implements OnApplicationBootstrap {
   async reindexAll(): Promise<number> {
     await this.ensureCollection();
     const docs = await this.docs(null);
-    if (docs.length) await this.documents().import(docs, { action: 'upsert' });
+    if (docs.length) await this.admin.collections<PathDoc>(this.name).documents().import(docs, { action: 'upsert' });
     const live = new Set(docs.map((d) => d.id));
     const indexed = (await this.documents().export({ include_fields: 'id' })).split('\n').filter(Boolean);
     for (const line of indexed) {
@@ -152,12 +180,15 @@ export class SearchIndexService implements OnApplicationBootstrap {
     return { ids: (res.hits ?? []).map((h) => h.document.id) };
   }
 
-  /** Hybrid (keyword + meaning) search at one level, for courses close enough to reuse instead of generating. */
+  /**
+   * Courses at one level close enough in meaning to reuse instead of generating. Semantic only: keyword hits skip the
+   * distance cut-off, and short Vietnamese syllables ("lập", "trình", "cơ", "bản") match unrelated courses.
+   */
   async similar(params: { q: string; level: string; limit: number }): Promise<{ ids: string[] }> {
     const res = await this.withCollection(() =>
       this.documents().search({
         q: params.q,
-        query_by: 'title,tags,summary,title_plain,tags_plain,embedding',
+        query_by: 'embedding',
         filter_by: `level:=\`${params.level.replace(/`/g, '')}\``,
         vector_query: `embedding:([], distance_threshold: ${MATCH_DISTANCE})`,
         exclude_fields: 'embedding',

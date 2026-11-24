@@ -68,7 +68,7 @@ AI and YouTube keys must never be shipped to the mobile client.
 
 ### Deploying
 
-Run `pnpm migration:run`, then on the first deploy with community courses `pnpm search:reindex` to build the Typesense collection from Postgres. `TYPESENSE_URL` and `TYPESENSE_API_KEY` are required. The collection has a built-in embedding (`ts/multilingual-e5-small`) for similar-course matching: Typesense downloads the model on first use, so it needs internet once and a few hundred MB more RAM; an existing collection gets the field added on boot.
+Run `pnpm migration:run`, then on the first deploy with community courses `pnpm search:reindex` to build the Typesense collection from Postgres. `TYPESENSE_URL` and `TYPESENSE_API_KEY` are required. The collection has a built-in embedding (`ts/multilingual-e5-small`) for similar-course matching: Typesense downloads the model on first use, so it needs internet once and a few hundred MB more RAM. Boot adds the field in the background (it embeds every document); until it is there, or if the model cannot load, only matching answers 503 (the app then generates) and the log shows `adding the embedding field failed`. Restart or `pnpm search:reindex` retries it. While Typesense adds the field to an existing collection (once, on the first boot after this change), community search results can be incomplete.
 
 ## MVP scope
 

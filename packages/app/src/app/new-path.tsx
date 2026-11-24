@@ -40,7 +40,7 @@ const describe = (f: Failure) => describeError(f instanceof ApiError ? f : f.cod
 /** These errors are only fixed by a fresh conversation. */
 const needsRestart = (e: Failure | null) => e?.code === 'CONVERSATION_LIMIT' || e?.code === 'CONVERSATION_CLOSED';
 
-/** Required before generating; goal stays optional. Mirrors the server's `ready` rule. */
+/** Required before generating. Mirrors the server's `ready` rule. */
 const missingCount = (p: Preferences) => [p.topic, p.level].filter((v) => !v).length;
 
 function Header({ title, onBack, onNewChat }: { title: string; onBack: () => void; onNewChat?: () => void }) {
@@ -131,9 +131,14 @@ function PrimaryButton({ label, onPress, disabled }: { label: string; onPress: (
   );
 }
 
-function TextButton({ label, onPress }: { label: string; onPress: () => void }) {
+function TextButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} className="min-h-12 items-center justify-center active:opacity-70">
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      className={`min-h-12 items-center justify-center active:opacity-70 ${disabled ? 'opacity-50' : ''}`}>
       <Text className="text-[15px] font-semibold text-tint-ink">{label}</Text>
     </Pressable>
   );
@@ -165,6 +170,8 @@ export default function NewPathScreen() {
   // Public courses close to the brief: copying one costs no AI calls, so they are offered before generating.
   const [matches, setMatches] = useState<CommunityPath[]>([]);
   const [checking, setChecking] = useState(false);
+  // State lags a render behind, so a quick double tap would pass a `checking` test.
+  const busy = useRef(false);
   // The user's edited copy of the draft's modules; compared by reference to know if anything changed.
   const [modules, setModules] = useState<LearningPath['modules']>([]);
   const scroller = useRef<ComponentRef<typeof RNScrollView>>(null);
@@ -267,7 +274,8 @@ export default function NewPathScreen() {
 
   /** Offers matching courses first; none, or any search error, goes straight to generating. */
   const offer = async () => {
-    if (!conversationId || checking) return;
+    if (!conversationId || busy.current) return;
+    busy.current = true;
     setChecking(true);
     try {
       const found = await getMatches(conversationId).catch(() => []);
@@ -275,12 +283,14 @@ export default function NewPathScreen() {
       setMatches(found);
       setStep('matches');
     } finally {
+      busy.current = false;
       setChecking(false);
     }
   };
 
   const take = async (course: CommunityPath) => {
-    if (checking) return;
+    if (busy.current) return;
+    busy.current = true;
     setChecking(true);
     setError(null);
     try {
@@ -291,6 +301,7 @@ export default function NewPathScreen() {
     } catch (e) {
       setError(toFailure(e));
     } finally {
+      busy.current = false;
       setChecking(false);
     }
   };
@@ -375,7 +386,11 @@ export default function NewPathScreen() {
           {matches.map((c) => (
             <View key={c.id} className="gap-1">
               <CourseRow course={c} onPress={() => router.push(`/community/${c.id}`)} />
-              <TextButton label={c.copiedPathId ? 'Mở khoá học' : 'Học khoá này'} onPress={() => take(c)} />
+              <TextButton
+                label={c.copiedPathId ? 'Mở khoá học' : 'Học khoá này'}
+                disabled={checking}
+                onPress={() => take(c)}
+              />
             </View>
           ))}
         </ScrollView>

@@ -95,6 +95,8 @@ describe('Community API (e2e)', { timeout: 30_000 }, () => {
     http = request(app.getHttpServer());
     ds = app.get(DataSource);
     search = app.get(SearchIndexService);
+    // Boot adds the embedding in the background; search results are unreliable until that alter finishes.
+    await search.ensureCollection();
     [{ id: lapTrinh }] = await ds.query(`SELECT id FROM categories WHERE slug = 'lap-trinh'`);
     [a, b, c] = [await newUser(), await newUser(), await newUser()];
     const l1 = await makePath(a.id, { title: `Lập trình một ${run}` });
