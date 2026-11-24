@@ -29,13 +29,29 @@ export type ChatOutput = {
 export type Categorized = { category: string; tags: string[] };
 export type CategorizeInput = { title: string; summary: string; modules: string[] };
 
+/** A module plus the 0-based indices of the scope areas it teaches. */
+type ModuleOutput = { title: string; lessons: { title: string }[]; covers: number[] };
+
 export type PathOutput = Categorized & {
+  /** Knowledge areas of a comprehensive course, prerequisites first; modules cover the first ones. */
+  scope: string[];
   /** ISO 639-1 code of the learner's input; lessons and quizzes are written in it. */
   language: string;
   title: string;
   summary: string;
-  modules: { title: string; lessons: { title: string }[] }[];
+  modules: ModuleOutput[];
 };
+
+/** The next chapters of a path, or `complete` when the outline already covers the topic for the level. */
+export type ExtendInput = {
+  language: string;
+  level?: string;
+  title: string;
+  modules: { title: string; lessons: string[] }[];
+  /** The course's planned areas, when it has a plan: the next modules teach the uncovered ones. */
+  scope?: { area: string; covered: boolean }[];
+};
+export type ExtendOutput = { complete: boolean; modules: ModuleOutput[] };
 
 export class AiError extends Error {
   constructor(
@@ -114,6 +130,24 @@ export function normalizeCategorized(raw: unknown): Categorized {
   };
 }
 
+/** Cleans the planned scope; module `covers` are remapped past dropped areas and out-of-range indices removed. */
+function scopeOf(raw: Record<string, unknown>, modules: ModuleOut[]): Pick<PathOutput, 'scope' | 'modules'> {
+  const areas = Array.isArray(raw.scope) ? raw.scope : [];
+  const remap = new Map<number, number>();
+  const scope: string[] = [];
+  areas.forEach((a, i) => {
+    const area = typeof a === 'string' ? a.replace(/\s+/g, ' ').trim() : '';
+    if (area && area.length <= 120 && scope.length < 20) remap.set(i, scope.push(area) - 1);
+  });
+  return {
+    scope,
+    modules: modules.map((m, i) => {
+      const mod = toModule(m, (raw.modules as unknown[])[i]);
+      return { ...mod, covers: [...new Set(mod.covers.flatMap((c) => (remap.has(c) ? [remap.get(c)!] : [])))] };
+    }),
+  };
+}
+
 export function validatePathOutput(raw: unknown): PathOutput {
   if (isObject(raw) && raw.rejected === true) throw new AiError('TOPIC_REJECTED', false);
   const dto = plainToInstance(PathOutDto, raw);
@@ -125,10 +159,37 @@ export function validatePathOutput(raw: unknown): PathOutput {
     title: dto.title,
     summary: dto.summary,
     ...normalizeCategorized(raw),
-    modules: dto.modules.map((m) => ({
-      title: m.title,
-      lessons: m.lessons.map((l) => ({ title: l.title })),
-    })),
+    ...scopeOf(raw, dto.modules),
+  };
+}
+
+class ExtendOutDto {
+  @IsBoolean() complete: boolean;
+  @IsArray()
+  @ArrayMaxSize(3)
+  @ValidateNested({ each: true })
+  @Type(() => ModuleOut)
+  modules: ModuleOut[];
+}
+
+/** Distinct non-negative integers, in order; anything else is dropped. */
+const indices = (v: unknown): number[] =>
+  Array.isArray(v) ? [...new Set(v.filter((i): i is number => Number.isInteger(i) && i >= 0))] : [];
+
+const toModule = (m: ModuleOut, raw: unknown): ModuleOutput => ({
+  title: m.title,
+  lessons: m.lessons.map((l) => ({ title: l.title })),
+  covers: indices(isObject(raw) ? raw.covers : undefined),
+});
+
+export function validateExtendOutput(raw: unknown): ExtendOutput {
+  const dto = plainToInstance(ExtendOutDto, raw);
+  if (!isObject(raw) || validateSync(dto, { whitelist: true }).length) throw invalid();
+  // Nothing new to add means the outline is done, whatever the flag says.
+  if (!dto.modules.length) return { complete: true, modules: [] };
+  return {
+    complete: dto.complete,
+    modules: dto.modules.map((m, i) => toModule(m, (raw.modules as unknown[])[i])),
   };
 }
 

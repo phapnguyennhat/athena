@@ -56,12 +56,19 @@ Environment variables are read from `.env` (never commit it).
 | `MAIL_FROM` | in use | Sender, e.g. `Athena <no-reply@example.com>` |
 | `RABBITMQ_URL` | required | AMQP URL of the AI job queue. Locally `amqp://<RABBITMQ_USER>:<RABBITMQ_PASSWORD>@localhost:5672` |
 | `RABBITMQ_USER`, `RABBITMQ_PASSWORD` | required by `docker compose` | Credentials the local RabbitMQ container is created with; must match `RABBITMQ_URL` |
+| `TYPESENSE_URL` | required | Typesense server for community course search. Locally `http://localhost:8108` (`docker compose up -d typesense`) |
+| `TYPESENSE_API_KEY` | required | Typesense admin key; `docker compose` starts the local server with it. Rebuild the index with `pnpm search:reindex` |
+| `TYPESENSE_COLLECTION` | optional | Collection name, default `community_paths`; e2e uses its own |
 | `RABBITMQ_PORT`, `RABBITMQ_UI_PORT` | optional | Host ports of the local RabbitMQ container, default `5672` and `15672` (management UI at http://localhost:15672) |
 | `GEMINI_API_KEY` | required | Gemini API key; server-side only |
 | `GEMINI_MODEL` | optional | Gemini model, default `gemini-3.8-flash` |
 | `YOUTUBE_API_KEY` | optional | YouTube Data API v3 key; server-side only. Set: each lesson stores up to 3 verified, embeddable videos (one `search.list` ≈ 100 quota units, once per lesson). Unset: the app links to a YouTube search instead |
 
 AI and YouTube keys must never be shipped to the mobile client.
+
+### Deploying
+
+Run `pnpm migration:run`, then on the first deploy with community courses `pnpm search:reindex` to build the Typesense collection from Postgres. `TYPESENSE_URL` and `TYPESENSE_API_KEY` are required. The collection has a built-in embedding (`ts/multilingual-e5-small`) for similar-course matching: Typesense downloads the model on first use, so it needs internet once and a few hundred MB more RAM. Boot adds the field in the background (it embeds every document); until it is there, or if the model cannot load, only matching answers 503 (the app then generates) and the log shows `adding the embedding field failed`. Restart or `pnpm search:reindex` retries it. While Typesense adds the field to an existing collection (once, on the first boot after this change), community search results can be incomplete.
 
 ## MVP scope
 

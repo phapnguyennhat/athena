@@ -1,14 +1,16 @@
 erDiagram
     users ||--o{ learning_paths : owns
     categories ||--o{ learning_paths : classifies
+    learning_paths |o--o{ learning_paths : "copied as"
     users ||--o| user_learning_stats : has
     users ||--o{ daily_activities : logs
     users ||--o{ lesson_progress : tracks
     users ||--o{ quiz_attempts : submits
     learning_paths ||--|{ learning_modules : contains
     learning_modules ||--|{ lessons : contains
-    lessons ||--o{ lesson_resources : has
-    lessons ||--o| quizzes : has
+    lesson_contents ||--|{ lessons : "shared by"
+    lesson_contents ||--o{ lesson_resources : has
+    lesson_contents ||--o| quizzes : has
     lessons ||--o{ lesson_progress : "tracked by"
     quizzes ||--|{ quiz_questions : contains
     quizzes ||--o{ quiz_attempts : "attempted in"
@@ -45,6 +47,8 @@ erDiagram
         varchar content_language "language of the user's input when creating the path"
         uuid category_id FK "nullable, idx; set by the LLM"
         text_array tags "lowercase Vietnamese keywords, GIN idx"
+        uuid source_path_id FK "nullable, idx; the community original this copy was made from, SET NULL"
+        timestamptz hidden_at "nullable; an active original its owner deleted, still public"
         enum status "draft | active | completed | archived"
         enum generation_status "pending | processing | completed | failed"
         varchar generation_error "user-safe message, nullable"
@@ -71,18 +75,24 @@ erDiagram
         jsonb learning_objectives "string[]"
         smallint estimated_minutes "nullable"
         int sort_order
-        jsonb content "validated structured content, nullable"
-        enum content_generation_status "pending | processing | completed | failed"
-        varchar generation_error "nullable"
-        varchar prompt_version "nullable"
-        timestamptz content_generated_at "nullable"
+        uuid content_id FK "idx; copies of a course share it, ON DELETE RESTRICT"
         timestamptz created_at
         timestamptz updated_at
     }
 
+    lesson_contents {
+        uuid id PK "= lesson id for lessons created before sharing"
+        jsonb content "validated structured content, nullable"
+        jsonb search_keywords "nullable"
+        timestamptz generated_at "nullable"
+        timestamptz generating_since "nullable, generation claim"
+        timestamptz quiz_generating_since "nullable, quiz generation claim"
+        timestamptz created_at
+    }
+
     lesson_resources {
         uuid id PK
-        uuid lesson_id FK "UK (lesson_id, provider, external_resource_id)"
+        uuid content_id FK "UK (content_id, provider, external_resource_id)"
         enum resource_type "youtube_video | article"
         varchar title
         text url "verified, never LLM-generated"
@@ -98,7 +108,7 @@ erDiagram
 
     quizzes {
         uuid id PK
-        uuid lesson_id FK,UK "one quiz per lesson"
+        uuid content_id FK,UK "one quiz per lesson content"
         varchar title
         enum generation_status "pending | processing | completed | failed"
         varchar generation_error "nullable"

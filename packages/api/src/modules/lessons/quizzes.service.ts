@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { QuizAttempt } from './entities/quiz-attempt.entity.js';
 import { Quiz } from './entities/quiz.entity.js';
@@ -46,8 +42,8 @@ export class QuizzesService {
   ) {}
 
   async forLesson(userId: string, lessonId: string): Promise<QuizView> {
-    await this.lessons.own(userId, lessonId);
-    const quiz = await this.ds.getRepository(Quiz).findOneBy({ lessonId });
+    const { content } = await this.lessons.own(userId, lessonId);
+    const quiz = await this.ds.getRepository(Quiz).findOneBy({ contentId: content.id });
     if (!quiz) throw quizNotFound();
     const [stats] = await this.ds.query(
       `SELECT count(*)::int AS attempts, max(correct) AS correct FROM quiz_attempts WHERE quiz_id = $1 AND user_id = $2`,
@@ -61,29 +57,23 @@ export class QuizzesService {
         options,
       })),
       attempts: stats.attempts,
-      best: stats.attempts
-        ? { correct: stats.correct, total: quiz.questions.length }
-        : null,
+      best: stats.attempts ? { correct: stats.correct, total: quiz.questions.length } : null,
     };
   }
 
   /** Graded against the stored key, never by a new AI call. Every submission is kept; it counts as a learning day. */
-  async submit(
-    userId: string,
-    quizId: string,
-    answers: number[],
-  ): Promise<AttemptResult> {
+  async submit(userId: string, quizId: string, answers: number[]): Promise<AttemptResult> {
     const quiz = await this.ds.getRepository(Quiz).findOneBy({ id: quizId });
     if (!quiz) throw quizNotFound();
-    // Ownership goes through the lesson's path; a foreign quiz is indistinguishable from a missing one.
-    await this.lessons.own(userId, quiz.lessonId).catch(() => {
-      throw quizNotFound();
-    });
+    // The caller must own a lesson on this quiz's content; a foreign quiz is indistinguishable from a missing one.
+    const [owned] = await this.ds.query(
+      `SELECT 1 FROM path_lessons l JOIN path_modules m ON m.id = l.module_id JOIN learning_paths p ON p.id = m.path_id
+       WHERE l.content_id = $1 AND p.user_id = $2 AND p.hidden_at IS NULL LIMIT 1`,
+      [quiz.contentId, userId],
+    );
+    if (!owned) throw quizNotFound();
     const qs = quiz.questions;
-    if (
-      answers.length !== qs.length ||
-      answers.some((a, i) => a >= qs[i].options.length)
-    )
+    if (answers.length !== qs.length || answers.some((a, i) => a >= qs[i].options.length))
       throw new BadRequestException({
         statusCode: 400,
         code: 'INVALID_ANSWERS',

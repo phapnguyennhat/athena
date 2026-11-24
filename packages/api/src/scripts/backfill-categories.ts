@@ -5,9 +5,13 @@ import { DataSource } from 'typeorm';
 import { databaseOptions } from '../database/database.options.js';
 import { backfillCategories } from '../modules/learning-paths/backfill-categories.js';
 import { GeminiPathAi } from '../modules/learning-paths/gemini-path-ai.js';
+import { SearchIndexService } from '../modules/search/search-index.service.js';
+import { typesenseClient } from '../modules/search/search.constants.js';
 
 if (existsSync('.env')) process.loadEnvFile('.env');
 if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY is not set');
+const { TYPESENSE_URL, TYPESENSE_API_KEY } = process.env;
+if (!TYPESENSE_URL || !TYPESENSE_API_KEY) throw new Error('TYPESENSE_URL and TYPESENSE_API_KEY must be set');
 
 const ds = await new DataSource({ ...databaseOptions(process.env), migrations: [] }).initialize();
 try {
@@ -17,6 +21,9 @@ try {
   );
   const result = await backfillCategories(ds, ai);
   console.log(result);
+  // Categories and tags are indexed: rebuild rather than queue a message per path from a script.
+  const search = new SearchIndexService(ds, typesenseClient(TYPESENSE_URL, TYPESENSE_API_KEY), null as never);
+  console.log(`reindexed ${await search.reindexAll()} public path(s)`);
   process.exitCode = result.failed ? 1 : 0;
 } finally {
   await ds.destroy();

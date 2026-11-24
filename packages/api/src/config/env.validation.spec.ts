@@ -18,12 +18,19 @@ const base = {
   GEMINI_API_KEY: 'test-key',
   AWS_REGION: 'us-east-1',
   S3_BUCKET: 'athena',
+  TYPESENSE_URL: 'http://localhost:8108',
+  TYPESENSE_API_KEY: 'test-key',
 };
 
 describe('validateEnv', () => {
   it('requires GEMINI_API_KEY', () => {
     const { GEMINI_API_KEY: _omit, ...rest } = base;
     expect(() => validateEnv(rest)).toThrow(/GEMINI_API_KEY/);
+  });
+
+  it('requires TYPESENSE_URL and TYPESENSE_API_KEY', () => {
+    const { TYPESENSE_URL: _u, TYPESENSE_API_KEY: _k, ...rest } = base;
+    expect(() => validateEnv(rest)).toThrow(/TYPESENSE_URL[\s\S]*TYPESENSE_API_KEY/);
   });
 
   it('defaults GEMINI_MODEL to gemini-3.8-flash', () => {

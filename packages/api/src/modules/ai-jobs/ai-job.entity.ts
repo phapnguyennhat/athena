@@ -1,4 +1,12 @@
-import { Column, CreateDateColumn, Entity, JoinColumn, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+  UpdateDateColumn,
+} from 'typeorm';
 import { User } from '../users/user.entity.js';
 
 @Entity('ai_jobs')
@@ -14,7 +22,7 @@ export class AiJob {
   user?: User;
 
   @Column({ type: 'varchar', length: 32 })
-  type: 'generate_path' | 'generate_lesson' | 'generate_quiz';
+  type: 'generate_path' | 'generate_lesson' | 'generate_quiz' | 'extend_path';
 
   @Column({ type: 'varchar', length: 16, default: 'queued' })
   status: 'queued' | 'running' | 'succeeded' | 'failed';

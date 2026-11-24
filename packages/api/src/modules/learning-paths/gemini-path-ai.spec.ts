@@ -115,7 +115,7 @@ describe('GeminiPathAi', () => {
     expect((generateContent.mock.calls[0][0] as any).config).toMatchObject({
       systemInstruction: GENERATE_SYSTEM,
       temperature: 0.6,
-      maxOutputTokens: 2000,
+      maxOutputTokens: 3000,
       responseSchema: PATH_SCHEMA,
       thinkingConfig: { thinkingBudget: 0 },
     });

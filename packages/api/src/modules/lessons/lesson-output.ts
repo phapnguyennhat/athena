@@ -19,7 +19,6 @@ import type { Level } from '../learning-paths/dto/learning-path.dto.js';
 export type LessonInput = {
   language: string;
   level?: Level;
-  goal?: string;
   pathTitle: string;
   moduleTitle: string;
   lessonTitle: string;
@@ -101,8 +100,7 @@ class QuizOutDto {
   questions: QuestionOut[];
 }
 
-const isObject = (v: unknown): v is Record<string, unknown> =>
-  typeof v === 'object' && v !== null && !Array.isArray(v);
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 // Links in generated text would be unverified resources (PROJECT_SPEC §5.4).
 const hasUrl = (s: string) => /https?:\/\/|www\./i.test(s);
 
@@ -138,20 +136,14 @@ export function validateQuizOutput(raw: unknown): QuizOutput {
   if (validateSync(dto, { whitelist: true }).length) throw invalid();
   for (const q of dto.questions) {
     if (q.answer >= q.options.length) throw invalid();
-    if (
-      new Set(q.options.map((o) => o.trim().toLowerCase())).size !==
-      q.options.length
-    )
-      throw invalid();
+    if (new Set(q.options.map((o) => o.trim().toLowerCase())).size !== q.options.length) throw invalid();
   }
   return {
-    questions: dto.questions.map(
-      ({ prompt, options, answer, explanation }) => ({
-        prompt,
-        options,
-        answer,
-        explanation,
-      }),
-    ),
+    questions: dto.questions.map(({ prompt, options, answer, explanation }) => ({
+      prompt,
+      options,
+      answer,
+      explanation,
+    })),
   };
 }

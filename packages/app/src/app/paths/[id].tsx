@@ -9,27 +9,39 @@ import { StateMark } from '@/components/state-mark';
 import { toast } from '@/components/toast';
 import { useLoad } from '@/hooks/use-load';
 import { deletePath } from '@/lib/learning-api';
-import { getPath, type LessonStatus } from '@/lib/learning-paths-api';
+import { getPath, type LearningPath, type LessonStatus } from '@/lib/learning-paths-api';
 import { Pressable, SafeAreaView, ScrollView, Text, View } from '@/tw';
 
 const MARK = { completed: 'done', in_progress: 'progress', not_started: 'todo' } as const;
 const STATUS_LABEL: Record<LessonStatus, string> = { completed: 'đã học', in_progress: 'đang học', not_started: 'chưa học' };
+const EXTENSION_NOTE: Record<LearningPath['extension'], string> = {
+  idle: 'Tiếp tục học để mở khoá các chương tiếp theo.',
+  generating: 'AI đang soạn chương tiếp theo…',
+  complete: 'Khoá học đã hoàn chỉnh.',
+};
 
 export default function PathScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { data: path, error, reload, refreshing, refresh } = useLoad(() => getPath(id));
 
+  // An active original is only hidden (it stays in Community); a copy or a draft is deleted.
+  const hides = path?.status === 'active' && !path.isCopy;
   const remove = () =>
-    Alert.alert('Xoá lộ trình?', 'Bài học, bài kiểm tra và tiến độ của lộ trình này sẽ bị xoá. Chuỗi ngày học vẫn giữ nguyên.', [
+    Alert.alert(
+      hides ? 'Ẩn khỏi khoá học của bạn?' : 'Xoá lộ trình?',
+      hides
+        ? 'Khoá học vẫn hiển thị trong Cộng đồng.'
+        : 'Bài học, bài kiểm tra và tiến độ của lộ trình này sẽ bị xoá. Chuỗi ngày học vẫn giữ nguyên.',
+      [
       { text: 'Huỷ', style: 'cancel' },
       {
-        text: 'Xoá',
+        text: hides ? 'Ẩn' : 'Xoá',
         style: 'destructive',
         onPress: async () => {
           try {
             await deletePath(id);
-            toast.info('Đã xoá lộ trình.');
+            toast.info(hides ? 'Đã ẩn khoá học.' : 'Đã xoá lộ trình.');
             if (router.canGoBack()) router.back();
             else router.replace('/courses');
           } catch (e) {
@@ -37,7 +49,8 @@ export default function PathScreen() {
           }
         },
       },
-    ]);
+      ],
+    );
 
   // The first unfinished lesson in learning order is where "Học tiếp" goes.
   const next = path?.modules.flatMap((m) => m.lessons).find((l) => l.status !== 'completed');
@@ -46,7 +59,7 @@ export default function PathScreen() {
     <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
       <ScreenHeader
         title={path?.title ?? 'Lộ trình'}
-        right={path ? <IconButton name={{ ios: 'trash', android: 'delete', web: 'delete' }} label="Xoá lộ trình" onPress={remove} /> : null}
+        right={path ? <IconButton name={{ ios: 'trash', android: 'delete', web: 'delete' }} label={hides ? 'Ẩn khoá học' : 'Xoá lộ trình'} onPress={remove} /> : null}
       />
       {!path ? (
         error ? <Retry onPress={reload} /> : <PathSkeleton />
@@ -82,6 +95,11 @@ export default function PathScreen() {
                 ))}
               </View>
             ))}
+            {path.status === 'active' ? (
+              <View accessibilityLiveRegion="polite" className="rounded-3xl border border-dashed border-line px-4 py-3">
+                <Text className="text-[14px] leading-5 text-ink-muted">{EXTENSION_NOTE[path.extension]}</Text>
+              </View>
+            ) : null}
           </ScrollView>
           {next ? (
             <View className="px-5 pb-2">

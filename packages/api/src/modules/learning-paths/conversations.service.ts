@@ -16,9 +16,11 @@ import type { Preferences } from './dto/learning-path.dto.js';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathMessage } from './entities/path-message.entity.js';
+import { deletePaths } from './learning-paths.service.js';
 import { PathAi } from './path-ai.js';
 
-export const GREETING = 'Chào bạn! Bạn muốn học chủ đề gì? Cứ nói tự nhiên, mình sẽ hỏi thêm vài điều để soạn lộ trình.';
+export const GREETING =
+  'Chào bạn! Bạn muốn học chủ đề gì? Cứ nói tự nhiên, mình sẽ hỏi thêm vài điều để soạn lộ trình.';
 export const GREETING_QUICK_REPLIES = ['SQL căn bản', 'Tiếng Anh giao tiếp', 'Tài chính cá nhân'];
 
 const MAX_USER_TURNS = 20;
@@ -62,14 +64,23 @@ export class ConversationsService {
       // Serialize per user so concurrent start-overs can't both insert an open conversation.
       await m.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`path_conv:${userId}`]);
       // Row lock before touching its drafts: same lock order as the generate handler and start.
-      const old = await m.findOne(PathConversation, { where: { userId, status: 'open' }, lock: { mode: 'pessimistic_write' } });
+      const old = await m.findOne(PathConversation, {
+        where: { userId, status: 'open' },
+        lock: { mode: 'pessimistic_write' },
+      });
       if (old) {
-        await m.delete(LearningPathEntity, { conversationId: old.id, status: 'draft' });
+        await deletePaths(m, { conversationId: old.id, status: 'draft' });
         await m.update(PathConversation, old.id, { status: 'closed' });
       }
       const fresh = await m.save(m.create(PathConversation, { userId }));
       await m.save(
-        m.create(PathMessage, { conversationId: fresh.id, role: 'assistant', content: GREETING, quickReplies: GREETING_QUICK_REPLIES, createdAt: new Date() }),
+        m.create(PathMessage, {
+          conversationId: fresh.id,
+          role: 'assistant',
+          content: GREETING,
+          quickReplies: GREETING_QUICK_REPLIES,
+          createdAt: new Date(),
+        }),
       );
       return fresh;
     });
@@ -93,7 +104,12 @@ export class ConversationsService {
       // Re-read under the lock: the snapshot above may predate a turn that just committed or a start-over.
       const conv = await this.getOpenForUser(userId, conversationId);
       if (conv.userTurns >= MAX_USER_TURNS)
-        throw err(ConflictException, 409, 'CONVERSATION_LIMIT', 'This conversation reached its turn limit. Start a new one.');
+        throw err(
+          ConflictException,
+          409,
+          'CONVERSATION_LIMIT',
+          'This conversation reached its turn limit. Start a new one.',
+        );
       const stored = await this.msgs.find({
         where: { conversationId: conv.id },
         order: { createdAt: 'DESC' },
@@ -110,7 +126,12 @@ export class ConversationsService {
       } catch (e) {
         if (e instanceof AiError) {
           this.log.warn(`chat failed for user ${userId}: ${e.code}`);
-          throw err(ServiceUnavailableException, 503, 'AI_UNAVAILABLE', 'The assistant is unavailable. Try again shortly.');
+          throw err(
+            ServiceUnavailableException,
+            503,
+            'AI_UNAVAILABLE',
+            'The assistant is unavailable. Try again shortly.',
+          );
         }
         throw e;
       }
@@ -118,7 +139,8 @@ export class ConversationsService {
 
       // Never let a null/undefined from the model wipe a collected field.
       const preferences = { ...conv.preferences };
-      for (const [k, v] of Object.entries(out.preferences)) if (v != null) (preferences as Record<string, unknown>)[k] = v;
+      for (const [k, v] of Object.entries(out.preferences))
+        if (v != null) (preferences as Record<string, unknown>)[k] = v;
       const ready = serverReady({ ...out, preferences });
 
       // Explicit, distinct timestamps: now() is transaction-start time, so same-transaction rows would tie.
@@ -126,8 +148,11 @@ export class ConversationsService {
       await this.ds.transaction(async (m) => {
         // The conversation may have been closed (start-over) while the model was thinking.
         const live = await m.findOne(PathConversation, { where: { id: conv.id }, lock: { mode: 'pessimistic_write' } });
-        if (live?.status !== 'open') throw err(ConflictException, 409, 'CONVERSATION_CLOSED', 'Conversation is closed.');
-        await m.save(m.create(PathMessage, { conversationId: conv.id, role: 'user', content, quickReplies: null, createdAt: at }));
+        if (live?.status !== 'open')
+          throw err(ConflictException, 409, 'CONVERSATION_CLOSED', 'Conversation is closed.');
+        await m.save(
+          m.create(PathMessage, { conversationId: conv.id, role: 'user', content, quickReplies: null, createdAt: at }),
+        );
         await m.save(
           m.create(PathMessage, {
             conversationId: conv.id,
@@ -149,7 +174,11 @@ export class ConversationsService {
     const [messages, job, draft] = await Promise.all([
       this.msgs.find({ where: { conversationId: conv.id }, order: { createdAt: 'ASC', role: 'DESC' } }),
       this.jobs.findOne({
-        where: { type: 'generate_path', status: In(['queued', 'running']), input: JsonContains({ conversationId: conv.id }) },
+        where: {
+          type: 'generate_path',
+          status: In(['queued', 'running']),
+          input: JsonContains({ conversationId: conv.id }),
+        },
         order: { createdAt: 'DESC' },
       }),
       this.paths.findOneBy({ conversationId: conv.id, status: 'draft' }),

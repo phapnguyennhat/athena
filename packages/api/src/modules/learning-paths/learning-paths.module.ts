@@ -4,6 +4,8 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiJob } from '../ai-jobs/ai-job.entity.js';
 import { AiJobsModule } from '../ai-jobs/ai-jobs.module.js';
+import { CommunityModule } from '../community/community.module.js';
+import { SearchModule } from '../search/search.module.js';
 import { ConversationsController } from './conversations.controller.js';
 import { ConversationsService } from './conversations.service.js';
 import { Category } from './entities/category.entity.js';
@@ -12,6 +14,7 @@ import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathLesson } from './entities/path-lesson.entity.js';
 import { PathMessage } from './entities/path-message.entity.js';
 import { PathModule } from './entities/path-module.entity.js';
+import { ExtendPathHandler } from './extend-path.handler.js';
 import { GeneratePathHandler } from './generate-path.handler.js';
 import { LearningPathsController } from './learning-paths.controller.js';
 import { LearningPathsService } from './learning-paths.service.js';
@@ -30,12 +33,15 @@ import { PathAi } from './path-ai.js';
       Category,
     ]),
     forwardRef(() => AiJobsModule),
+    SearchModule,
+    CommunityModule,
   ],
   controllers: [LearningPathsController, ConversationsController],
   providers: [
     LearningPathsService,
     ConversationsService,
     GeneratePathHandler,
+    ExtendPathHandler,
     {
       provide: PathAi,
       inject: [ConfigService],
@@ -46,6 +52,6 @@ import { PathAi } from './path-ai.js';
         ),
     },
   ],
-  exports: [GeneratePathHandler, LearningPathsService, PathAi],
+  exports: [GeneratePathHandler, ExtendPathHandler, LearningPathsService, PathAi],
 })
 export class LearningPathsModule {}

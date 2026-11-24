@@ -3,6 +3,8 @@ import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useRef, useState, type ComponentRef } from 'react';
 import { Alert, KeyboardAvoidingView, ScrollView as RNScrollView } from 'react-native';
 import { ChatSkeleton, PathSkeleton } from '@/components/skeleton';
+import { CourseRow } from '@/components/community-cards';
+import { copyCommunityPath, type CommunityPath } from '@/lib/community-api';
 
 import { useAuth, useSignedOutHref } from '@/auth';
 import { StateMark } from '@/components/state-mark';
@@ -11,10 +13,12 @@ import { ApiError } from '@/lib/api';
 import {
   generatePath,
   getCurrentConversation,
+  getMatches,
   getPath,
   sendMessage,
   startConversation,
   startPath,
+  LEVEL_LABEL,
   type ChatMessage,
   type ConversationView,
   type LearningPath,
@@ -25,11 +29,10 @@ import { watchJob } from '@/lib/socket';
 import { toast } from '@/components/toast';
 import { Pressable, SafeAreaView, ScrollView, Text, TextInput, View, useCSSVariable } from '@/tw';
 
-type Step = 'loading' | 'chat' | 'generating' | 'review';
+type Step = 'loading' | 'chat' | 'matches' | 'generating' | 'review';
 /** An API error or a failed job's code; anything else (e.g. network) falls back to the generic copy. */
 type Failure = { status?: number; code?: string | null };
 
-const LEVEL_LABEL = { beginner: 'Cơ bản', intermediate: 'Trung cấp', advanced: 'Nâng cao' } as const;
 
 const currentConversation = async () => (await getCurrentConversation()) ?? (await startConversation());
 const toFailure = (e: unknown): Failure => (e instanceof ApiError ? e : {});
@@ -37,7 +40,7 @@ const describe = (f: Failure) => describeError(f instanceof ApiError ? f : f.cod
 /** These errors are only fixed by a fresh conversation. */
 const needsRestart = (e: Failure | null) => e?.code === 'CONVERSATION_LIMIT' || e?.code === 'CONVERSATION_CLOSED';
 
-/** Required before generating; goal stays optional. Mirrors the server's `ready` rule. */
+/** Required before generating. Mirrors the server's `ready` rule. */
 const missingCount = (p: Preferences) => [p.topic, p.level].filter((v) => !v).length;
 
 function Header({ title, onBack, onNewChat }: { title: string; onBack: () => void; onNewChat?: () => void }) {
@@ -128,9 +131,14 @@ function PrimaryButton({ label, onPress, disabled }: { label: string; onPress: (
   );
 }
 
-function TextButton({ label, onPress }: { label: string; onPress: () => void }) {
+function TextButton({ label, onPress, disabled }: { label: string; onPress: () => void; disabled?: boolean }) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} className="min-h-12 items-center justify-center active:opacity-70">
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      className={`min-h-12 items-center justify-center active:opacity-70 ${disabled ? 'opacity-50' : ''}`}>
       <Text className="text-[15px] font-semibold text-tint-ink">{label}</Text>
     </Pressable>
   );
@@ -159,6 +167,11 @@ export default function NewPathScreen() {
   // On the generating step, "Thử lại" reloads the conversation instead of starting another (costly) job.
   const [retryLoad, setRetryLoad] = useState(false);
   const [path, setPath] = useState<LearningPath | null>(null);
+  // Public courses close to the brief: copying one costs no AI calls, so they are offered before generating.
+  const [matches, setMatches] = useState<CommunityPath[]>([]);
+  const [checking, setChecking] = useState(false);
+  // State lags a render behind, so a quick double tap would pass a `checking` test.
+  const busy = useRef(false);
   // The user's edited copy of the draft's modules; compared by reference to know if anything changed.
   const [modules, setModules] = useState<LearningPath['modules']>([]);
   const scroller = useRef<ComponentRef<typeof RNScrollView>>(null);
@@ -259,6 +272,40 @@ export default function NewPathScreen() {
     }
   };
 
+  /** Offers matching courses first; none, or any search error, goes straight to generating. */
+  const offer = async () => {
+    if (!conversationId || busy.current) return;
+    busy.current = true;
+    setChecking(true);
+    try {
+      const found = await getMatches(conversationId).catch(() => []);
+      if (!found.length) return await generate();
+      setMatches(found);
+      setStep('matches');
+    } finally {
+      busy.current = false;
+      setChecking(false);
+    }
+  };
+
+  const take = async (course: CommunityPath) => {
+    if (busy.current) return;
+    busy.current = true;
+    setChecking(true);
+    setError(null);
+    try {
+      const pathId = course.copiedPathId ?? (await copyCommunityPath(course.id)).id;
+      // Closes this chat so "Tạo lộ trình" starts fresh next time; a failure here only leaves it open.
+      await startConversation().catch(() => {});
+      router.replace(`/paths/${pathId}`);
+    } catch (e) {
+      setError(toFailure(e));
+    } finally {
+      busy.current = false;
+      setChecking(false);
+    }
+  };
+
   const backToChat = () => {
     setError(null);
     setStep('chat');
@@ -324,6 +371,32 @@ export default function NewPathScreen() {
         ) : (
           <ChatSkeleton />
         )}
+      </SafeAreaView>
+    );
+  }
+
+  if (step === 'matches') {
+    return (
+      <SafeAreaView className="flex-1 bg-canvas" edges={['top', 'bottom']}>
+        <Header title="Đã có khoá học tương tự" onBack={backToChat} />
+        <ScrollView contentContainerClassName="gap-4 px-5 pt-2 pb-6">
+          <Text className="text-[15px] leading-[22px] text-ink-muted">
+            Những khoá này gần với chủ đề của bạn. Học ngay một khoá, hoặc để AI soạn lộ trình mới.
+          </Text>
+          {matches.map((c) => (
+            <View key={c.id} className="gap-1">
+              <CourseRow course={c} onPress={() => router.push(`/community/${c.id}`)} />
+              <TextButton
+                label={c.copiedPathId ? 'Mở khoá học' : 'Học khoá này'}
+                disabled={checking}
+                onPress={() => take(c)}
+              />
+            </View>
+          ))}
+        </ScrollView>
+        <View className="px-5 pb-2">
+          <PrimaryButton label="Vẫn tạo khoá mới" disabled={checking} onPress={generate} />
+        </View>
       </SafeAreaView>
     );
   }
@@ -445,7 +518,7 @@ export default function NewPathScreen() {
         ) : null}
         {ready ? (
           <View className="px-5 pb-2">
-            <PrimaryButton label="Tạo lộ trình" disabled={sending} onPress={generate} />
+            <PrimaryButton label="Tạo lộ trình" disabled={sending || checking} onPress={offer} />
           </View>
         ) : null}
         <View className="mx-4 mb-2 flex-row items-end gap-2 rounded-[26px] border border-line bg-surface py-1.5 pr-1.5 pl-4">
@@ -456,7 +529,7 @@ export default function NewPathScreen() {
             returnKeyType="send"
             submitBehavior="submit"
             multiline
-            placeholder={missing ? 'Chủ đề, trình độ và mục tiêu của bạn…' : 'Nhắn cho AI…'}
+            placeholder={missing ? 'Chủ đề và trình độ của bạn…' : 'Nhắn cho AI…'}
 
             placeholderTextColor={placeholder as string}
             accessibilityLabel="Tin nhắn"

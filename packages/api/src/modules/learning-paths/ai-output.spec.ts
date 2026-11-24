@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { AiError, normalizeCategorized, serverReady, validateChatOutput, validatePathOutput } from './ai-output.js';
+import {
+  AiError,
+  normalizeCategorized,
+  serverReady,
+  validateChatOutput,
+  validateExtendOutput,
+  validatePathOutput,
+} from './ai-output.js';
 
 const chat = (over: Record<string, unknown> = {}) => ({
   reply: 'Xin chào',
@@ -118,5 +125,45 @@ describe('normalizeCategorized', () => {
       validatePathOutput({ ...path([mod(2), mod(2), mod(2)]), category: 'Toán học', tags: ['đại số'] }),
     ).toMatchObject({ category: 'Toán học', tags: ['đại số'] });
     expect(validatePathOutput(path([mod(2), mod(2), mod(2)]))).toMatchObject({ category: 'Khác', tags: [] });
+  });
+});
+
+describe('validateExtendOutput', () => {
+  it('keeps up to 3 next modules', () => {
+    expect(validateExtendOutput({ complete: false, modules: [mod(2, 'Tiếp')] })).toEqual({
+      complete: false,
+      modules: [{ title: 'Tiếp', lessons: [{ title: 'L' }, { title: 'L' }], covers: [] }],
+    });
+    expect(code(() => validateExtendOutput({ complete: false, modules: [mod(2), mod(2), mod(2), mod(2)] }))).toBe(
+      'AI_INVALID_OUTPUT',
+    );
+  });
+  it('treats no new modules as complete', () => {
+    expect(validateExtendOutput({ complete: false, modules: [] })).toEqual({ complete: true, modules: [] });
+  });
+  it('rejects a missing flag or a 1-lesson module', () => {
+    expect(code(() => validateExtendOutput({ modules: [] }))).toBe('AI_INVALID_OUTPUT');
+    expect(code(() => validateExtendOutput({ complete: false, modules: [mod(1)] }))).toBe('AI_INVALID_OUTPUT');
+  });
+});
+
+describe('course scope', () => {
+  it("keeps the scope and each module's valid area indices", () => {
+    const out = validatePathOutput({
+      ...path([{ ...mod(2), covers: [0, 1] }, { ...mod(2), covers: [1, 7, -1, 'x'] }, mod(2)]),
+      scope: ['  Nền tảng ', 'Truy vấn', '', 'Tối ưu'],
+    });
+    expect(out.scope).toEqual(['Nền tảng', 'Truy vấn', 'Tối ưu']);
+    expect(out.modules.map((m) => m.covers)).toEqual([[0, 1], [1], []]);
+  });
+  it('treats a missing scope as none', () => {
+    const out = validatePathOutput(path([mod(2), mod(2), mod(2)]));
+    expect(out.scope).toEqual([]);
+    expect(out.modules[0].covers).toEqual([]);
+  });
+  it("keeps extension modules' area indices", () => {
+    expect(
+      validateExtendOutput({ complete: false, modules: [{ ...mod(2), covers: [3, 3, 'y'] }] }).modules[0].covers,
+    ).toEqual([3]);
   });
 });

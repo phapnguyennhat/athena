@@ -1,7 +1,9 @@
 import { authFetch, ApiError } from '@/lib/api';
+import type { CommunityPath } from '@/lib/community-api';
 
 // Mirrors the conversations, jobs and learning-paths controllers in packages/api.
 export type Level = 'beginner' | 'intermediate' | 'advanced';
+export const LEVEL_LABEL = { beginner: 'Cơ bản', intermediate: 'Trung cấp', advanced: 'Nâng cao' } as const;
 export type Preferences = { topic?: string; level?: Level; goal?: string };
 export type ChatMessage = { role: 'user' | 'assistant'; content: string; quickReplies: string[] | null };
 export type ChatReply = { reply: string; quickReplies: string[]; preferences: Preferences; ready: boolean };
@@ -22,6 +24,10 @@ export type LearningPath = {
   status: 'draft' | 'active';
   title: string;
   summary: string;
+  /** Copied from a Community course. Deleting an active original only hides it. */
+  isCopy: boolean;
+  /** AI adds chapters as the learner nears the end; `complete` once the course covers the topic. */
+  extension: 'idle' | 'generating' | 'complete';
   progress: { done: number; total: number };
   modules: { id: string; title: string; lessons: { id: string; title: string; status: LessonStatus }[] }[];
 };
@@ -41,6 +47,10 @@ export const sendMessage = (id: string, content: string) =>
 
 export const generatePath = (conversationId: string) =>
   authFetch<JobView>(`/learning-paths/conversations/${conversationId}/generate`, { method: 'POST' });
+
+/** Public courses close to the brief, offered before generating a new one. */
+export const getMatches = (conversationId: string) =>
+  authFetch<CommunityPath[]>(`/learning-paths/conversations/${conversationId}/matches`);
 
 export const getJob = (id: string) => authFetch<JobView>(`/jobs/${id}`);
 

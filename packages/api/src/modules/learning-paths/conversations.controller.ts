@@ -1,4 +1,16 @@
-import { Body, ConflictException, Controller, Get, HttpCode, HttpStatus, NotFoundException, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  ConflictException,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { CurrentUser } from '@nestjs/authentication';
 import {
   ApiBadRequestResponse,
@@ -13,6 +25,8 @@ import {
 import { Throttle, hours, minutes } from '@nestjs/throttler';
 import { UserThrottlerGuard } from '../../common/user-throttler.guard.js';
 import { AiJobsService, toJobView, type JobView } from '../ai-jobs/ai-jobs.service.js';
+import { CommunityService } from '../community/community.service.js';
+import type { CommunityPath } from '../community/dto.js';
 import { User } from '../users/user.entity.js';
 import { ConversationsService, type ConversationView } from './conversations.service.js';
 import { SendMessageDto } from './dto/learning-path.dto.js';
@@ -26,6 +40,7 @@ export class ConversationsController {
   constructor(
     private readonly conversations: ConversationsService,
     private readonly jobs: AiJobsService,
+    private readonly community: CommunityService,
   ) {}
 
   /** The user's open conversation with its messages. */
@@ -33,7 +48,12 @@ export class ConversationsController {
   @ApiNotFoundResponse({ description: 'No open conversation.' })
   async current(@CurrentUser() user: User): Promise<ConversationView> {
     const view = await this.conversations.current(user.id);
-    if (!view) throw new NotFoundException({ statusCode: 404, code: 'CONVERSATION_NOT_FOUND', message: 'No open conversation.' });
+    if (!view)
+      throw new NotFoundException({
+        statusCode: 404,
+        code: 'CONVERSATION_NOT_FOUND',
+        message: 'No open conversation.',
+      });
     return view;
   }
 
@@ -48,12 +68,22 @@ export class ConversationsController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 20, ttl: minutes(1) } })
   @ApiBadRequestResponse({ description: 'Invalid body.' })
-  @ApiNotFoundResponse({ description: 'Not the user\'s conversation.' })
+  @ApiNotFoundResponse({ description: "Not the user's conversation." })
   @ApiConflictResponse({ description: 'CONVERSATION_CLOSED, CONVERSATION_LIMIT or TURN_IN_PROGRESS.' })
   @ApiTooManyRequestsResponse({ description: 'More than 20 messages a minute.' })
   @ApiServiceUnavailableResponse({ description: 'AI_UNAVAILABLE.' })
   send(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SendMessageDto) {
     return this.conversations.sendMessage(user.id, id, dto.content);
+  }
+
+  /** Public courses close to the brief, offered before generating: copying one costs no model calls. */
+  @Get(':id/matches')
+  @ApiNotFoundResponse({ description: "Not the user's conversation." })
+  @ApiConflictResponse({ description: 'CONVERSATION_CLOSED or NOT_READY.' })
+  @ApiServiceUnavailableResponse({ description: 'SEARCH_UNAVAILABLE.' })
+  async matches(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string): Promise<CommunityPath[]> {
+    const conv = await this.readyConversation(user.id, id);
+    return this.community.matches(user.id, { topic: conv.preferences.topic!, level: conv.preferences.level! });
   }
 
   /** Queue path generation. Idempotent: while a job for this conversation is active, that job is returned. */
@@ -65,9 +95,18 @@ export class ConversationsController {
   @ApiTooManyRequestsResponse({ description: 'More than 5 generations an hour.' })
   @ApiServiceUnavailableResponse({ description: 'QUEUE_UNAVAILABLE.' })
   async generate(@CurrentUser() user: User, @Param('id', ParseUUIDPipe) id: string): Promise<JobView> {
-    const conv = await this.conversations.getOpenForUser(user.id, id);
-    if (!conv.ready)
-      throw new ConflictException({ statusCode: 409, code: 'NOT_READY', message: 'The conversation does not have enough information yet.' });
+    const conv = await this.readyConversation(user.id, id);
     return toJobView(await this.jobs.enqueue(user.id, 'generate_path', { conversationId: conv.id }));
+  }
+
+  private async readyConversation(userId: string, id: string) {
+    const conv = await this.conversations.getOpenForUser(userId, id);
+    if (!conv.ready)
+      throw new ConflictException({
+        statusCode: 409,
+        code: 'NOT_READY',
+        message: 'The conversation does not have enough information yet.',
+      });
+    return conv;
   }
 }

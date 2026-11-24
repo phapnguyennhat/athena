@@ -3,6 +3,8 @@ import { DataSource } from 'typeorm';
 import type { AiJob } from '../ai-jobs/ai-job.entity.js';
 import { JobError, type JobHandler } from '../ai-jobs/job-handlers.js';
 import { PathAi } from '../learning-paths/path-ai.js';
+import { claimOrWait, releaseClaim } from './content-claim.js';
+import { LessonContentEntity } from './entities/lesson-content.entity.js';
 import { Quiz } from './entities/quiz.entity.js';
 import { findOwnedLesson } from './lessons.service.js';
 
@@ -20,34 +22,33 @@ export class GenerateQuizHandler implements JobHandler {
     const lessonId = job.input.lessonId as string;
     const owned = await findOwnedLesson(this.ds.manager, job.userId, lessonId);
     if (!owned) throw new JobError('LESSON_NOT_FOUND');
-    const { lesson, path } = owned;
-    if (!lesson.content) throw new JobError('LESSON_NOT_READY');
+    const { lesson, content: row, path } = owned;
+    if (!row.content) throw new JobError('LESSON_NOT_READY');
+    const contentId = row.id;
     const repo = this.ds.getRepository(Quiz);
-    const existing = await repo.findOneBy({ lessonId });
-    if (existing) return existing.id;
-
-    const { questions } = await this.ai.quiz({
-      language: path.contentLanguage,
-      level: path.preferences.level,
-      lessonTitle: lesson.title,
-      content: lesson.content,
-    });
-    // The unique lesson_id keeps the first quiz if two runs race; the lesson may also have been deleted meanwhile.
-    try {
-      await repo
-        .createQueryBuilder()
-        .insert()
-        .values({ lessonId, questions })
-        .orIgnore()
-        .execute();
-    } catch (e) {
-      if (
-        (e as { driverError?: { code?: string } }).driverError?.code === '23503'
-      )
-        throw new JobError('LESSON_NOT_FOUND');
-      throw e;
+    const ready = async () => !!(await repo.existsBy({ contentId }));
+    const claim = await claimOrWait(this.ds, contentId, 'quiz_generating_since', ready);
+    if (claim) {
+      try {
+        const { questions } = await this.ai.quiz({
+          language: path.contentLanguage,
+          level: path.preferences.level,
+          lessonTitle: lesson.title,
+          content: row.content,
+        });
+        // The unique content_id stays a last guard if a stale claim was taken over; the content may also be gone.
+        await this.ds.transaction(async (m) => {
+          await m.createQueryBuilder().insert().into(Quiz).values({ contentId, questions }).orIgnore().execute();
+          await m.update(LessonContentEntity, contentId, { quizGeneratingSince: null });
+        });
+      } catch (e) {
+        await releaseClaim(this.ds, contentId, 'quiz_generating_since', claim);
+        if ((e as { driverError?: { code?: string } }).driverError?.code === '23503')
+          throw new JobError('LESSON_NOT_FOUND');
+        throw e;
+      }
     }
-    const quiz = await repo.findOneBy({ lessonId });
+    const quiz = await repo.findOneBy({ contentId });
     if (!quiz) throw new JobError('LESSON_NOT_FOUND');
     return quiz.id;
   }

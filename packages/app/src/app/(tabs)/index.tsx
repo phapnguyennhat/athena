@@ -3,10 +3,12 @@ import { RefreshControl } from 'react-native';
 import { HomeSkeleton } from '@/components/skeleton';
 
 import { BrandMark } from '@/components/brand-mark';
-import { ContinueSection, StreakCard } from '@/components/home-sections';
+import { CourseRail } from '@/components/community-cards';
+import { ContinueSection, SectionTitle, StreakCard } from '@/components/home-sections';
 import { Retry } from '@/components/retry';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { useLoad } from '@/hooks/use-load';
+import { getRecommendations } from '@/lib/community-api';
 import { getDashboard } from '@/lib/learning-api';
 import { Pressable, SafeAreaView, ScrollView, Text, View } from '@/tw';
 
@@ -16,13 +18,15 @@ const weekday = (date: string) => (new Date(`${date}T00:00:00Z`).getUTCDay() + 6
 export default function HomeScreen() {
   const router = useRouter();
   const { data, error, reload, refreshing, refresh } = useLoad(getDashboard);
+  // Quiet: suggestions are extra, so a failure just hides the section instead of toasting.
+  const suggestions = useLoad(() => getRecommendations().catch(() => []));
 
   return (
     <SafeAreaView className="flex-1 bg-canvas" edges={['top']}>
       <ScrollView
-        contentContainerClassName="gap-7 pb-32"
+        contentContainerClassName="gap-7 pb-6"
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => (refresh(), suggestions.reload())} />}>
         <View className="mr-2 ml-5 flex-row items-center justify-between">
           <BrandMark />
           <ThemeToggle />
@@ -66,12 +70,20 @@ export default function HomeScreen() {
                   onPath={(id) => router.push(`/paths/${id}`)}
                 />
               )}
-              <Text className="text-[13px] leading-5 text-ink-muted">
-                Đã học {data.totals.completedLessons} bài · {data.totals.quizAttempts} lần làm bài kiểm tra · Kỷ lục{' '}
-                {data.streak.longest} ngày
-              </Text>
             </>
           )}
+          {/* Outside the dashboard branch: suggestions load on their own, so they show even if the dashboard fails. */}
+          {suggestions.data?.length ? (
+            <View className="-mx-5 gap-3">
+              <View className="mx-5 flex-row items-baseline justify-between">
+                <SectionTitle>Gợi ý cho bạn</SectionTitle>
+                <Pressable accessibilityRole="link" hitSlop={8} onPress={() => router.push('/community')} className="active:opacity-70">
+                  <Text className="text-[15px] font-bold text-tint-ink">Xem tất cả</Text>
+                </Pressable>
+              </View>
+              <CourseRail courses={suggestions.data} onOpen={(id) => router.push(`/community/${id}`)} />
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>

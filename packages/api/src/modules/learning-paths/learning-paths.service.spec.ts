@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { LearningPathEntity } from './entities/learning-path.entity.js';
 import { PathConversation } from './entities/path-conversation.entity.js';
 import { PathLesson } from './entities/path-lesson.entity.js';
+import { LessonContentEntity } from '../lessons/entities/lesson-content.entity.js';
 import { PathModule } from './entities/path-module.entity.js';
 import { LearningPathsService } from './learning-paths.service.js';
 
@@ -39,16 +40,26 @@ function setup(path: Partial<LearningPathEntity> | null) {
     findOneBy: vi.fn().mockResolvedValue(path),
     findOne: vi.fn().mockResolvedValue(path),
     delete: vi.fn(),
+    query: vi.fn().mockResolvedValue([{ content_id: 'old-c0' }]),
     update: vi.fn(),
     save: vi.fn((_e: unknown, rows: object[]) => Promise.resolve(rows.map((r, i) => ({ ...r, id: `new-m${i}` })))),
-    insert: vi.fn(),
+    insert: vi.fn((_e: unknown, rows: object[]) =>
+      Promise.resolve({ identifiers: rows.map((_, i) => ({ id: `c${i}` })) }),
+    ),
   };
   const ds = {
     transaction: vi.fn((fn: (mgr: typeof m) => unknown) => fn(m)),
     query: vi.fn().mockResolvedValue([{ lesson_id: 'l2', status: 'completed' }]),
+    manager: { query: vi.fn().mockResolvedValue([{ id: 'l1', title: 'Một' }]) },
   };
+  const jobs = { enqueue: vi.fn().mockResolvedValue({}) };
   const repo = { findOne: vi.fn().mockResolvedValue(stored) };
-  return { m, repo, svc: new LearningPathsService(ds as never, repo as never) };
+  return {
+    m,
+    repo,
+    jobs,
+    svc: new LearningPathsService(ds as never, repo as never, { publish: vi.fn() } as never, jobs as never),
+  };
 }
 
 describe('LearningPathsService', () => {
@@ -61,6 +72,8 @@ describe('LearningPathsService', () => {
       summary: 'Tóm tắt',
       category: { id: 'cat1', name: 'Lập trình' },
       tags: ['sql'],
+      isCopy: false,
+      extension: 'idle',
       progress: { done: 1, total: 3 },
       modules: [
         {
@@ -92,8 +105,13 @@ describe('LearningPathsService', () => {
     const edited = [{ title: 'Chỉ một chương', lessons: [{ title: 'Một bài' }] }];
     await svc.start('u1', 'p1', edited);
     expect(m.delete).toHaveBeenCalledWith(PathModule, { pathId: 'p1' });
+    // The replaced lessons' content goes with them unless another lesson still points at it.
+    expect(m.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM lesson_contents'), [['old-c0']]);
     expect(m.save).toHaveBeenCalledWith(PathModule, [{ pathId: 'p1', position: 0, title: 'Chỉ một chương' }]);
-    expect(m.insert).toHaveBeenCalledWith(PathLesson, [{ moduleId: 'new-m0', position: 0, title: 'Một bài' }]);
+    expect(m.insert).toHaveBeenCalledWith(LessonContentEntity, [{}]);
+    expect(m.insert).toHaveBeenCalledWith(PathLesson, [
+      { moduleId: 'new-m0', position: 0, title: 'Một bài', contentId: 'c0' },
+    ]);
     expect(m.update).toHaveBeenCalledWith(LearningPathEntity, 'p1', {
       status: 'active',
     });
