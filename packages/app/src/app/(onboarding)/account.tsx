@@ -453,10 +453,8 @@ export default function AccountScreen() {
   );
 }
 
+// Server messages are English: a 4xx gets this screen's Vietnamese copy; 429, 5xx and network get the shared copy.
 function humanError(e: unknown, fallback: string) {
-  if (e instanceof ApiError) {
-    if (typeof e.message === 'string' && e.message && !e.message.startsWith('HTTP ')) return e.message;
-  }
-  if (e instanceof TypeError) return describeError(e);
+  if (e instanceof ApiError ? e.status === 429 || e.status >= 500 : e instanceof TypeError) return describeError(e);
   return fallback;
 }
