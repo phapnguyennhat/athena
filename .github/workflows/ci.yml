@@ -86,20 +86,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Every var and secret of the `production` environment becomes a line of .env, except the deploy plumbing.
+      # Every var of the `production` environment, plus the API's secrets listed here, becomes a line of .env.
+      # Secrets are named one by one (a new API secret must be added here too), never dumped wholesale.
       - name: Write .env and compose file
         env:
           VARS_JSON: ${{ toJSON(vars) }}
-          SECRETS_JSON: ${{ toJSON(secrets) }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          RABBITMQ_PASSWORD: ${{ secrets.RABBITMQ_PASSWORD }}
+          RABBITMQ_URL: ${{ secrets.RABBITMQ_URL }}
+          TYPESENSE_API_KEY: ${{ secrets.TYPESENSE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
         run: |
           mkdir -p "$DEPLOY_PATH"
           cp packages/api/docker-compose.prod.yml "$DEPLOY_PATH/docker-compose.yml"
           umask 077
           {
-            jq -rn --argjson v "$VARS_JSON" --argjson s "$SECRETS_JSON" '
-              $v + $s | to_entries[]
-              | select(.key | test("^(DEPLOY_PATH|EXPO_TOKEN|github_token|GITHUB_TOKEN)$") | not)
+            jq -rn --argjson v "$VARS_JSON" '
+              $v | to_entries[]
+              | select(.key | test("^(DEPLOY_PATH|EXPO_PUBLIC_.*)$") | not)
               | "\(.key)='"'"'\(.value)'"'"'"'
+            for k in JWT_SECRET POSTGRES_PASSWORD REDIS_PASSWORD RABBITMQ_PASSWORD RABBITMQ_URL TYPESENSE_API_KEY \
+                     GEMINI_API_KEY YOUTUBE_API_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SMTP_USER SMTP_PASSWORD; do
+              if [ -n "${!k}" ]; then printf "%s='%s'\n" "$k" "${!k}"; fi
+            done
             echo "API_IMAGE='$API_IMAGE'"
             echo "NODE_ENV='production'"
           } > "$DEPLOY_PATH/.env"
