@@ -1,0 +1,116 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter api
+      - run: pnpm --filter api test:cov
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-coverage
+          path: packages/api/coverage
+
+  build:
+    needs: [lint, coverage]
+    # The VPS is arm64: build the image natively there instead of emulating.
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: image
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}-api" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # PRs only check the image builds; main also pushes it for deploy.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packages/api/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+            ${{ steps.image.outputs.name }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Self-hosted runner on the VPS (label `vps`), so deploy runs docker compose locally.
+    runs-on: [self-hosted, vps]
+    environment: production
+    concurrency: deploy-production
+    permissions:
+      contents: read
+      packages: read
+    env:
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/ubuntu/athena' }}
+      API_IMAGE: ${{ needs.build.outputs.image }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every var and secret of the `production` environment becomes a line of .env, except the deploy plumbing.
+      - name: Write .env and compose file
+        env:
+          VARS_JSON: ${{ toJSON(vars) }}
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: |
+          mkdir -p "$DEPLOY_PATH"
+          cp packages/api/docker-compose.prod.yml "$DEPLOY_PATH/docker-compose.yml"
+          umask 077
+          {
+            jq -rn --argjson v "$VARS_JSON" --argjson s "$SECRETS_JSON" '
+              $v + $s | to_entries[]
+              | select(.key | test("^(DEPLOY_PATH|EXPO_TOKEN|github_token|GITHUB_TOKEN)$") | not)
+              | "\(.key)='"'"'\(.value)'"'"'"'
+            echo "API_IMAGE='$API_IMAGE'"
+            echo "NODE_ENV='production'"
+          } > "$DEPLOY_PATH/.env"
+
+      - name: Pull, migrate, restart
+        working-directory: ${{ env.DEPLOY_PATH }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+          docker compose pull api
+          docker compose up -d postgres redis rabbitmq typesense
+          docker compose run --rm api npx typeorm migration:run -d dist/database/data-source.js
+          docker compose up -d --remove-orphans
+          docker image prune -f
+          docker logout ghcr.io

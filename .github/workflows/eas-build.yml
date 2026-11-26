@@ -1,0 +1,51 @@
+name: EAS Android APK
+
+on:
+  push:
+    branches: [main]
+    paths: ['packages/app/**', 'pnpm-lock.yaml', '.github/workflows/eas-build.yml']
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: eas.json build profile
+        default: preview
+        type: choice
+        options: [preview, production]
+
+concurrency:
+  group: eas-android
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: packages/app
+    env:
+      PROFILE: ${{ inputs.profile || 'preview' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: pnpm install --frozen-lockfile --filter app
+
+      # EAS bundles on its own servers and .env is not uploaded, so pass the GitHub EXPO_PUBLIC_* vars via the profile env.
+      - name: Inject EXPO_PUBLIC_* vars into eas.json
+        env:
+          VARS_JSON: ${{ toJSON(vars) }}
+        run: |
+          jq --argjson v "$VARS_JSON" --arg p "$PROFILE" \
+            '.build[$p].env = ($v | with_entries(select(.key | startswith("EXPO_PUBLIC_"))))' \
+            eas.json > eas.tmp.json && mv eas.tmp.json eas.json
+
+      # --no-wait: the build runs on EAS; the APK link shows up on expo.dev (and in this log).
+      - run: eas build --platform android --profile "$PROFILE" --non-interactive --no-wait
